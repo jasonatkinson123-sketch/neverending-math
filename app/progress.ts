@@ -20,11 +20,15 @@ export function chooseSkills(mastery: Mastery, date: string, serial: number) {
   const random = seededRandom(hash(`${date}-${serial}-skills`));
   const review = [...skillIds].sort((a, b) => score(mastery[a]) - score(mastery[b]));
   const familiar = [...skillIds].sort((a, b) => mastery[b].seen - mastery[a].seen);
-  const selected: SkillId[] = [];
-  const add = (skill: SkillId) => { if (!selected.includes(skill)) selected.push(skill); };
-  add(review[0]); add(review[1]); add(familiar[0]);
-  while (selected.length < 12) add(skillIds[Math.floor(random() * skillIds.length)]);
-  return selected.slice(0, 12);
+  // The order is intentional: a little review first, familiar work in the
+  // middle, then a few varied prompts. Repetition is allowed here; a skill
+  // that needs attention should quietly return rather than waiting weeks.
+  return [
+    review[0], review[1], review[0],
+    familiar[0], familiar[1],
+    ...Array.from({ length: 5 }, () => skillIds[Math.floor(random() * skillIds.length)]),
+    review[2], skillIds[Math.floor(random() * skillIds.length)],
+  ];
 }
 export function createSession(progress: Progress, date: string, serial: number): Session {
   const random = seededRandom(hash(`${date}-${serial}-questions`));

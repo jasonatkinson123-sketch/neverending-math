@@ -36,6 +36,9 @@ test("completion updates mastery and grants the next quiet collectible once", ()
   const done = completeSession(started.progress, started.session.id, outcomes);
   assert.equal(done.collectedIds[0], "bell");
   assert.equal(done.mastery[started.session.questions[0].skill].reviewed, 1);
-  assert.equal(done.mastery[started.session.questions[1].skill].first, 1);
+  const expectedFirstForSecondSkill = started.session.questions
+    .slice(1)
+    .filter((question) => question.skill === started.session.questions[1].skill).length;
+  assert.equal(done.mastery[started.session.questions[1].skill].first, expectedFirstForSecondSkill);
   assert.equal(done.sessions[0].complete, true);
 });
