@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { correctAnswer, normalizeFactors, normalizeNumber } from "../app/math-input.ts";
 import { makeQuestion, seededRandom, skillIds, validQuestion } from "../app/math-system.ts";
-import { blankProgress, chooseSkills, completeSession, masteryPriority, parseProgress, startSession, updateMastery } from "../app/progress.ts";
+import { blankProgress, chooseSkills, completeSession, masteryPriority, parseProgress, setSkillEnabled, startSession, updateMastery } from "../app/progress.ts";
 
 test("every supported skill generates mathematically valid questions", () => {
   for (const skill of skillIds) {
@@ -84,11 +84,37 @@ test("reviewed work becomes higher priority and returns sooner by skill", () => 
 });
 
 test("active concept settings persist and strictly constrain future sessions", () => {
-  const progress = { ...blankProgress(), activeSkills: ["fractions", "commonDenominators"] };
+  let progress = blankProgress();
+  progress = setSkillEnabled(progress, "squareRoots", false);
+  assert.equal(progress.activeSkills.includes("squareRoots"), false, "a concept can be disabled");
   const restored = parseProgress(JSON.stringify(progress));
   assert.deepEqual(restored.activeSkills, progress.activeSkills);
   const started = startSession(restored, "2026-09-12");
-  assert.ok(started.session.questions.every(question => progress.activeSkills.includes(question.skill)));
+  assert.ok(started.session.questions.every(question => question.skill !== "squareRoots"));
+  assert.equal(started.session.questions.length, 12, "a partial selection still makes a complete session");
+});
+
+test("changing Settings replaces an incompatible unfinished session", () => {
+  const original = startSession(blankProgress(), "2026-09-14");
+  const disabledSkill = original.session.questions[0].skill;
+  const changed = setSkillEnabled(original.progress, disabledSkill, false);
+  const restarted = startSession(changed, "2026-09-14");
+  assert.notEqual(restarted.session.id, original.session.id);
+  assert.equal(restarted.progress.sessions.find(session => session.id === original.session.id).superseded, true);
+  assert.ok(restarted.session.questions.every(question => question.skill !== disabledSkill));
+});
+
+test("re-enabling a concept allows it back into generated sessions", () => {
+  let progress = { ...blankProgress(), activeSkills: ["multiplication"] };
+  progress = setSkillEnabled(progress, "squareRoots", true);
+  progress = setSkillEnabled(progress, "multiplication", false);
+  const started = startSession(progress, "2026-09-15");
+  assert.ok(started.session.questions.every(question => question.skill === "squareRoots"));
+});
+
+test("the final active concept cannot be disabled", () => {
+  const progress = { ...blankProgress(), activeSkills: ["division"] };
+  assert.deepEqual(setSkillEnabled(progress, "division", false).activeSkills, ["division"]);
 });
 
 test("a new collection is empty and the first daily reward is the bell", () => {

@@ -9,7 +9,7 @@ export type MasteryEntry = {
 };
 export type Mastery = Record<SkillId, MasteryEntry>;
 export type JourneyPhase = "warmupIntro" | "warmup" | "warmupComplete" | "challengeIntro" | "challenge" | "results";
-export type Session = { id: string; dateKey: string; serial: number; questions: Question[]; warmups: Question[]; complete: boolean; extra?: boolean; rewardId?: string; checkpoint?: { phase: JourneyPhase; warmIndex: number; questionIndex: number; outcomes: Outcome[] } };
+export type Session = { id: string; dateKey: string; serial: number; questions: Question[]; warmups: Question[]; complete: boolean; extra?: boolean; superseded?: boolean; rewardId?: string; checkpoint?: { phase: JourneyPhase; warmIndex: number; questionIndex: number; outcomes: Outcome[] } };
 export type Progress = { version: 3; sound: boolean; voice: boolean; activeSkills: SkillId[]; sessions: Session[]; mastery: Mastery; collectedIds: string[]; placedIds: string[] };
 
 export const collectibles = [
@@ -21,6 +21,13 @@ export const collectible = (id: string) => collectibles.find(([item]) => item ==
 const blankEntry = (): MasteryEntry => ({ seen: 0, first: 0, retry: 0, reviewed: 0, successful: 0, recentErrors: 0, confidence: .35, lastSeen: null, intervalDays: 1, nextDue: null, recent: [] });
 const blankMastery = () => Object.fromEntries(skillIds.map((skill) => [skill, blankEntry()])) as Mastery;
 export const blankProgress = (): Progress => ({ version: 3, sound: true, voice: true, activeSkills: [...skillIds], sessions: [], mastery: blankMastery(), collectedIds: [], placedIds: [] });
+
+export function setSkillEnabled(progress: Progress, skill: SkillId, enabled: boolean): Progress {
+  const active = progress.activeSkills.includes(skill);
+  if (enabled && !active) return { ...progress, activeSkills: [...progress.activeSkills, skill] };
+  if (!enabled && active && progress.activeSkills.length > 1) return { ...progress, activeSkills: progress.activeSkills.filter(item => item !== skill) };
+  return progress;
+}
 
 export function dateKey(now = new Date()) { return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; }
 const outcomeValue: Record<Outcome, number> = { first: 1, retry: .68, reviewed: .12 };
@@ -72,11 +79,12 @@ export function updateMastery(mastery: Mastery, questions: Question[], outcomes:
   return next;
 }
 export function startSession(progress: Progress, today = dateKey(), extra = false) {
-  const existing = progress.sessions.find((session) => session.dateKey === today && !session.complete && !extra);
+  const existing = progress.sessions.find((session) => session.dateKey === today && !session.complete && !session.superseded && !extra && session.questions.every(question => progress.activeSkills.includes(question.skill)));
   if (existing) return { progress, session: existing };
-  const serial = progress.sessions.length + 1;
+  const sessions = extra ? progress.sessions : progress.sessions.map(session => session.dateKey === today && !session.complete && !session.extra ? { ...session, superseded: true } : session);
+  const serial = sessions.length + 1;
   const session = createSession(progress, today, serial, extra);
-  return { progress: { ...progress, sessions: [...progress.sessions, session] }, session };
+  return { progress: { ...progress, sessions: [...sessions, session] }, session };
 }
 export function completeSession(progress: Progress, id: string, outcomes: Outcome[]) {
   const session = progress.sessions.find((item) => item.id === id); if (!session) return progress;
