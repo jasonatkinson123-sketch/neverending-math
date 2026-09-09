@@ -1,4 +1,5 @@
-import { hash, makeQuestion, seededRandom, skillIds, type Question, type SkillId } from "./math-system.ts";
+import { collectibles } from "./collectibles.ts";
+import { hash, makeQuestion, seededRandom, skillIds, warmupFor, type Question, type SkillId } from "./math-system.ts";
 
 export type Outcome = "first" | "retry" | "reviewed";
 export type MasteryEntry = {
@@ -9,18 +10,12 @@ export type MasteryEntry = {
 };
 export type Mastery = Record<SkillId, MasteryEntry>;
 export type JourneyPhase = "warmupIntro" | "warmup" | "warmupComplete" | "challengeIntro" | "challenge" | "results";
-export type Session = { id: string; dateKey: string; serial: number; questions: Question[]; warmups: Question[]; complete: boolean; extra?: boolean; superseded?: boolean; rewardId?: string; checkpoint?: { phase: JourneyPhase; warmIndex: number; questionIndex: number; outcomes: Outcome[] } };
-export type Progress = { version: 3; sound: boolean; voice: boolean; activeSkills: SkillId[]; sessions: Session[]; mastery: Mastery; collectedIds: string[]; placedIds: string[] };
-
-export const collectibles = [
-  ["bell", "OLD BRASS SCHOOL BELL", "Found on Day 1"], ["pen", "FOUNTAIN PEN", "Found beneath the attendance book"], ["compass", "BRASS COMPASS", "Found in a shallow drawer"], ["ruler", "WOODEN RULER", "Found by the blackboard"], ["globe", "SMALL GLOBE", "Found in the map cabinet"], ["abacus", "RED-WOOD ABACUS", "Found near the window"], ["textbook", "OLD TEXTBOOK", "Found on a high shelf"], ["lens", "MAGNIFYING GLASS", "Found beside the ink"], ["puzzle", "WOODEN PUZZLE", "Found in the cupboard"], ["protractor", "BRASS PROTRACTOR", "Found in a paper sleeve"], ["watch", "POCKET WATCH", "Found behind the desk"], ["ink", "INK BOTTLE", "Found in the writing drawer"], ["slate", "SMALL SLATE", "Found under a stack of papers"], ["chalk", "CHALK BOX", "Found beneath the ledge"], ["key", "CABINET KEY", "Found in the coat pocket"], ["stamp", "LIBRARY STAMP", "Found in the card file"], ["map", "FOLDED STAR MAP", "Found in a blue envelope"], ["ledger", "LEATHER LEDGER", "Found under the globe"], ["eraser", "FELT ERASER", "Found near the board"], ["bookmark", "RIBBON BOOKMARK", "Found in an atlas"], ["top", "WOODEN TOP", "Found in the drawer"], ["clip", "BRASS PAPER CLIP", "Found on a note"], ["box", "MATCHBOX OF TACKS", "Found in the supply cabinet"], ["card", "INDEX CARD", "Found among old problems"], ["cube", "NUMBER CUBE", "Found beside the bell"], ["feather", "INK-STAINED FEATHER", "Found in a book"], ["shell", "SMALL SHELL", "Found on the sill"], ["coin", "OLD TOKEN", "Found under the rug"], ["tape", "MEASURING TAPE", "Found in a tin"], ["lamp", "LAMP PULL", "Found in the desk"],
-] as const;
-export type CollectibleId = typeof collectibles[number][0];
-export const collectible = (id: string) => collectibles.find(([item]) => item === id) ?? collectibles[0];
+export type Session = { id: string; dateKey: string; serial: number; eligibleSkills: SkillId[]; questions: Question[]; warmups: Question[]; complete: boolean; extra?: boolean; superseded?: boolean; rewardId?: string; checkpoint?: { phase: JourneyPhase; warmIndex: number; questionIndex: number; outcomes: Outcome[] } };
+export type Progress = { version: 4; sound: boolean; voice: boolean; activeSkills: SkillId[]; sessions: Session[]; mastery: Mastery; collectedIds: string[]; placedIds: string[] };
 
 const blankEntry = (): MasteryEntry => ({ seen: 0, first: 0, retry: 0, reviewed: 0, successful: 0, recentErrors: 0, confidence: .35, lastSeen: null, intervalDays: 1, nextDue: null, recent: [] });
 const blankMastery = () => Object.fromEntries(skillIds.map((skill) => [skill, blankEntry()])) as Mastery;
-export const blankProgress = (): Progress => ({ version: 3, sound: true, voice: true, activeSkills: [...skillIds], sessions: [], mastery: blankMastery(), collectedIds: [], placedIds: [] });
+export const blankProgress = (): Progress => ({ version: 4, sound: true, voice: true, activeSkills: [...skillIds], sessions: [], mastery: blankMastery(), collectedIds: [], placedIds: [] });
 
 export function setSkillEnabled(progress: Progress, skill: SkillId, enabled: boolean): Progress {
   const active = progress.activeSkills.includes(skill);
@@ -60,8 +55,14 @@ export function chooseSkills(mastery: Mastery, date: string, serial: number, act
 }
 export function createSession(progress: Progress, date: string, serial: number, extra = false): Session {
   const random = seededRandom(hash(`${date}-${serial}-questions`));
-  const skills = chooseSkills(progress.mastery, date, serial, progress.activeSkills);
-  return { id: `${date}-${serial}`, dateKey: date, serial, warmups: [], questions: skills.map((skill, index) => makeQuestion(skill, random, index)), complete: false, extra, checkpoint: { phase: "warmupIntro", warmIndex: 0, questionIndex: 0, outcomes: [] } };
+  const eligibleSkills = [...progress.activeSkills];
+  const skills = chooseSkills(progress.mastery, date, serial, eligibleSkills);
+  const warmups = warmupFor(date, serial, eligibleSkills);
+  return { id: `${date}-${serial}`, dateKey: date, serial, eligibleSkills, warmups, questions: skills.map((skill, index) => makeQuestion(skill, random, index)), complete: false, extra, checkpoint: { phase: warmups.length ? "warmupIntro" : "challengeIntro", warmIndex: 0, questionIndex: 0, outcomes: [] } };
+}
+
+export function sessionIsCompatible(session: Session, activeSkills: SkillId[]) {
+  return [...session.warmups, ...session.questions].every((question) => activeSkills.includes(question.skill));
 }
 export function updateMastery(mastery: Mastery, questions: Question[], outcomes: Outcome[], completedOn: string) {
   const next = structuredClone(mastery);
@@ -79,7 +80,7 @@ export function updateMastery(mastery: Mastery, questions: Question[], outcomes:
   return next;
 }
 export function startSession(progress: Progress, today = dateKey(), extra = false) {
-  const existing = progress.sessions.find((session) => session.dateKey === today && !session.complete && !session.superseded && !extra && session.questions.every(question => progress.activeSkills.includes(question.skill)));
+  const existing = progress.sessions.find((session) => session.dateKey === today && !session.complete && !session.superseded && !extra && sessionIsCompatible(session, progress.activeSkills));
   if (existing) return { progress, session: existing };
   const sessions = extra ? progress.sessions : progress.sessions.map(session => session.dateKey === today && !session.complete && !session.extra ? { ...session, superseded: true } : session);
   const serial = sessions.length + 1;
@@ -100,11 +101,18 @@ export function checkpointSession(progress: Progress, id: string, checkpoint: No
 export function parseProgress(raw: string | null): Progress {
   if (!raw) return blankProgress(); try {
     const value = JSON.parse(raw), blank = blankProgress();
-    if (value.version === 2 || value.version === 3) {
+    if (value.version === 2 || value.version === 3 || value.version === 4) {
       const mastery = blankMastery();
       for (const skill of skillIds) mastery[skill] = { ...mastery[skill], ...(value.mastery?.[skill] ?? {}) };
       const activeSkills = Array.isArray(value.activeSkills) ? value.activeSkills.filter((skill: SkillId) => skillIds.includes(skill)) : [...skillIds];
-      return { ...blank, ...value, version: 3, activeSkills: activeSkills.length ? activeSkills : [...skillIds], mastery, sessions: Array.isArray(value.sessions) ? value.sessions : [] };
+      const normalizedSkills = activeSkills.length ? activeSkills : [...skillIds];
+      const sessions = Array.isArray(value.sessions) ? value.sessions.map((session: Session) => {
+        const eligibleSkills = Array.isArray(session.eligibleSkills) ? session.eligibleSkills.filter((skill: SkillId) => skillIds.includes(skill)) : [...normalizedSkills];
+        const warmups = Array.isArray(session.warmups) && session.warmups.length ? session.warmups : warmupFor(session.dateKey, session.serial, eligibleSkills);
+        const phase = !warmups.length && session.checkpoint && ["warmupIntro", "warmup", "warmupComplete"].includes(session.checkpoint.phase) ? "challengeIntro" : session.checkpoint?.phase;
+        return { ...session, eligibleSkills, warmups, checkpoint: session.checkpoint ? { ...session.checkpoint, phase } : session.checkpoint };
+      }) : [];
+      return { ...blank, ...value, version: 4, activeSkills: normalizedSkills, mastery, sessions };
     }
   } catch {} return blankProgress();
 }

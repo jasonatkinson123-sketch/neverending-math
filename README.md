@@ -17,12 +17,15 @@ calendar day adds one object to the collection; optional extra practice does not
   factors, prime factorization, GCF, LCM, negative numbers, common denominators,
   fraction concepts, exponents, square roots, and order of operations.
 - A daily session model: an unfinished question resumes after a reload; a completed day remains
-  special; optional extra practice is always available.
+  special; optional extra practice is always available. Each session owns its eligible-skill
+  snapshot, generated warm-up, challenge questions, checkpoint, completion, and reward state.
 - Conservative skill-by-skill mastery tracking records first tries, retries,
   reviews, recent errors, confidence, recency, and a 1–14 day spacing interval.
   Daily selection mixes due review, current work, secure maintenance, and stretch.
 - Settings can enable or disable individual concepts. The active concept list is
-  stored on the device and strictly constrains newly created sessions.
+  stored on the device and strictly constrains both warm-up and challenge content.
+- Warm-up uses enabled multiplication and division facts. It uses either one alone when only
+  one is enabled, and is skipped when both are disabled.
 - Thirty named old-study collectibles, beginning with the brass school bell.
 - A new collection is empty. The first daily completion discovers the brass school
   bell; later daily completions add one object at a time.
@@ -35,11 +38,13 @@ calendar day adds one object to the collection; optional extra practice does not
 ## Project map
 
 - app/math-system.ts — skill definitions and mathematically controlled generators.
-- app/progress.ts — daily selection, local persistence model, mastery, rewards.
+- app/progress.ts — the Session source of truth, daily selection, persistence model, mastery, rewards.
+- app/collectibles.ts — collectible descriptions and display glyphs.
 - app/math-input.ts — answer normalization and validation.
 - app/page.tsx — the existing atmospheric screens and the daily ritual.
-- tests/ — focused checks for math validity, answer formats, session selection,
-  mastery, collectible progression, and rendered output.
+- PRODUCT_RULES.md — product invariants that implementation and tests must preserve.
+- tests/ — unit and rendered interaction checks for math validity, Settings, session resume,
+  mastery, collectible progression, and output.
 
 ## Running checks
 

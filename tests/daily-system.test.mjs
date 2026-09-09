@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { correctAnswer, normalizeFactors, normalizeNumber } from "../app/math-input.ts";
-import { makeQuestion, seededRandom, skillIds, validQuestion } from "../app/math-system.ts";
-import { blankProgress, chooseSkills, completeSession, masteryPriority, parseProgress, setSkillEnabled, startSession, updateMastery } from "../app/progress.ts";
+import { makeQuestion, seededRandom, skillIds, validQuestion, warmupFor } from "../app/math-system.ts";
+import { blankProgress, checkpointSession, chooseSkills, completeSession, masteryPriority, parseProgress, sessionIsCompatible, setSkillEnabled, startSession, updateMastery } from "../app/progress.ts";
 
 test("every supported skill generates mathematically valid questions", () => {
   for (const skill of skillIds) {
@@ -29,6 +29,28 @@ test("the same day resumes unfinished work and extra practice makes a new sessio
   const extra = startSession(first.progress, "2026-09-08", true);
   assert.equal(resumed.session.id, first.session.id);
   assert.notEqual(extra.session.id, first.session.id);
+});
+
+test("the session owns its stable warm-up and challenge content", () => {
+  const started = startSession(blankProgress(), "2026-09-08");
+  assert.equal(started.session.warmups.length, 8);
+  assert.deepEqual(started.session.eligibleSkills, started.progress.activeSkills);
+  const restored = parseProgress(JSON.stringify(started.progress));
+  const resumed = startSession(restored, "2026-09-08");
+  assert.deepEqual(resumed.session.warmups, started.session.warmups);
+  assert.deepEqual(resumed.session.questions, started.session.questions);
+});
+
+test("warm-up respects enabled fluency skills and skips when both are disabled", () => {
+  const divisionOnly = warmupFor("2026-09-08", 1, ["division", "fractions"]);
+  assert.equal(divisionOnly.length, 8);
+  assert.ok(divisionOnly.every((question) => question.skill === "division"));
+
+  const noFluency = { ...blankProgress(), activeSkills: ["fractions", "squareRoots"] };
+  const started = startSession(noFluency, "2026-09-08");
+  assert.deepEqual(started.session.warmups, []);
+  assert.equal(started.session.checkpoint.phase, "challengeIntro");
+  assert.ok(started.session.questions.every((question) => noFluency.activeSkills.includes(question.skill)));
 });
 
 test("completion updates mastery and grants the next quiet collectible once", () => {
@@ -104,6 +126,16 @@ test("changing Settings replaces an incompatible unfinished session", () => {
   assert.ok(restarted.session.questions.every(question => question.skill !== disabledSkill));
 });
 
+test("a Settings change also checks stored warm-up eligibility", () => {
+  const original = startSession(blankProgress(), "2026-09-16");
+  const changed = setSkillEnabled(original.progress, "multiplication", false);
+  assert.equal(sessionIsCompatible(original.session, changed.activeSkills), false);
+  const restarted = startSession(changed, "2026-09-16");
+  assert.notEqual(restarted.session.id, original.session.id);
+  assert.ok(restarted.session.warmups.every((question) => question.skill === "division"));
+  assert.ok([...restarted.session.warmups, ...restarted.session.questions].every((question) => question.skill !== "multiplication"));
+});
+
 test("re-enabling a concept allows it back into generated sessions", () => {
   let progress = { ...blankProgress(), activeSkills: ["multiplication"] };
   progress = setSkillEnabled(progress, "squareRoots", true);
@@ -115,6 +147,24 @@ test("re-enabling a concept allows it back into generated sessions", () => {
 test("the final active concept cannot be disabled", () => {
   const progress = { ...blankProgress(), activeSkills: ["division"] };
   assert.deepEqual(setSkillEnabled(progress, "division", false).activeSkills, ["division"]);
+});
+
+test("persistence retains mastery and a precise interruption checkpoint", () => {
+  const started = startSession(blankProgress(), "2026-09-17");
+  const checkpointed = checkpointSession(started.progress, started.session.id, { phase: "challenge", warmIndex: 7, questionIndex: 4, outcomes: ["first", "retry", "reviewed", "first"] });
+  const restored = parseProgress(JSON.stringify(checkpointed));
+  const resumed = startSession(restored, "2026-09-17");
+  assert.deepEqual(resumed.session.checkpoint, checkpointed.sessions[0].checkpoint);
+  assert.deepEqual(resumed.session.questions, started.session.questions);
+});
+
+test("disabled-skill mastery is untouched by an enabled-only session", () => {
+  let progress = blankProgress();
+  progress = setSkillEnabled(progress, "squareRoots", false);
+  const before = structuredClone(progress.mastery.squareRoots);
+  const started = startSession(progress, "2026-09-18");
+  const completed = completeSession(started.progress, started.session.id, started.session.questions.map(() => "first"));
+  assert.deepEqual(completed.mastery.squareRoots, before);
 });
 
 test("a new collection is empty and the first daily reward is the bell", () => {

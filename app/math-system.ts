@@ -58,9 +58,13 @@ export function makeQuestion(skill: SkillId, random: () => number, sequence = 0)
   const a = between(2, 9, random), b = between(2, 8, random), c = between(2, 12, random); return { id, skill: "orderOfOperations", prompt: `${a} + ${b} × ${c} = ?`, answer: a + b * c, shown: `${a} + (${b} × ${c}) = ${a + b * c}`, hint: "Multiply before you add.", input: "number" };
 }
 
-export function warmupFor(dateKey: string, serial: number) {
+export const warmupSkills: SkillId[] = ["multiplication", "division"];
+
+export function warmupFor(dateKey: string, serial: number, activeSkills: SkillId[] = skillIds) {
   const random = seededRandom(hash(`${dateKey}-warm-${serial}`));
-  return Array.from({ length: 8 }, (_, i) => makeQuestion(i % 2 ? "division" : "multiplication", random, i));
+  const eligible = warmupSkills.filter((skill) => activeSkills.includes(skill));
+  if (!eligible.length) return [];
+  return Array.from({ length: 8 }, (_, index) => makeQuestion(eligible[index % eligible.length], random, index));
 }
 
 export function hash(text: string) { return [...text].reduce((value, char) => ((value << 5) - value + char.charCodeAt(0)) | 0, 2166136261) >>> 0; }
