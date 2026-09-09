@@ -5,7 +5,8 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
-import { completeSession, parseProgress, startSession } from "../app/progress.ts";
+import { collectibles } from "../app/collectibles.ts";
+import { blankProgress, completeSession, parseProgress, startSession } from "../app/progress.ts";
 
 const storageKey = "neverending-math-progress-v2";
 let vite;
@@ -68,6 +69,17 @@ async function openSettings() {
   await click(button("Open settings"));
 }
 
+async function openCollection(savedProgress) {
+  const mounted = await renderApp(savedProgress);
+  await click(button("Enter Neverending Math"));
+  await click(button("Open objects collection"));
+  return mounted;
+}
+
+function collectionProgress(count, placedIds = []) {
+  return JSON.stringify({ ...blankProgress(), collectedIds: collectibles.slice(0, count).map(([id]) => id), placedIds });
+}
+
 test("Settings selection persists through navigation and reload and controls sessions", async () => {
   let mounted = await renderApp();
   await openSettings();
@@ -112,6 +124,8 @@ test("a fresh collection is empty and displays the first earned Bell", async () 
   await click(button("Enter Neverending Math"));
   await click(button("Open objects collection"));
   assert.match(document.body.textContent, /0 FOUND/);
+  assert.match(document.body.textContent, /THE SHELVES ARE QUIET/);
+  assert.equal(document.querySelectorAll(".collection-item").length, 0);
   assert.doesNotMatch(document.body.textContent, /OLD BRASS SCHOOL BELL/);
 
   const first = startSession(parseProgress(null), "2026-09-20");
@@ -122,6 +136,46 @@ test("a fresh collection is empty and displays the first earned Bell", async () 
   await click(button("Open objects collection"));
   assert.match(document.body.textContent, /1 FOUND/);
   assert.match(document.body.textContent, /OLD BRASS SCHOOL BELL/);
+  assert.equal(document.querySelectorAll(".collection-item").length, 1);
+  assert.doesNotMatch(document.body.textContent, /FOUNTAIN PEN/);
+  await act(async () => { mounted.root.unmount(); });
+});
+
+test("a partial collection keeps all ten discoveries in chronological order and reveals no future objects", async () => {
+  const mounted = await openCollection(collectionProgress(10));
+  const items = [...document.querySelectorAll(".collection-item")];
+  assert.equal(items.length, 10);
+  assert.deepEqual(items.map(item => item.dataset.collectibleId), collectibles.slice(0, 10).map(([id]) => id));
+  assert.match(items[0].textContent, /OLD BRASS SCHOOL BELL/);
+  assert.match(items[9].textContent, /BRASS PROTRACTOR/);
+  assert.doesNotMatch(document.body.textContent, /POCKET WATCH/);
+  await act(async () => { mounted.root.unmount(); });
+});
+
+test("the full collection exposes every discovery exactly once, including first and thirtieth", async () => {
+  const mounted = await openCollection(collectionProgress(30));
+  const items = [...document.querySelectorAll(".collection-item")];
+  const ids = items.map(item => item.dataset.collectibleId);
+  assert.equal(items.length, 30);
+  assert.equal(new Set(ids).size, 30);
+  assert.deepEqual(ids, collectibles.map(([id]) => id));
+  assert.ok(button("Inspect OLD BRASS SCHOOL BELL"));
+  assert.ok(button("Inspect LAMP PULL"));
+  await act(async () => { mounted.root.unmount(); });
+});
+
+test("an early unplaced object remains selectable and placeable after later discoveries", async () => {
+  const mounted = await openCollection(collectionProgress(20, ["pen"]));
+  await click(button("Inspect OLD BRASS SCHOOL BELL"));
+  await click(button("PLACE IN THE STUDY →"));
+  assert.match(document.body.textContent, /OLD BRASS SCHOOL BELL/);
+  await click(button("PLACE THIS IN THE STUDY →"));
+  const saved = parseProgress(stored());
+  assert.ok(saved.placedIds.includes("bell"));
+  assert.equal(saved.placedIds.filter(id => id === "bell").length, 1);
+  await click(button("Return to collection"));
+  assert.ok(button("Inspect OLD BRASS SCHOOL BELL"));
+  assert.match(button("Inspect OLD BRASS SCHOOL BELL").textContent, /IN THE STUDY/);
   await act(async () => { mounted.root.unmount(); });
 });
 
