@@ -6,6 +6,7 @@ export function normalizePair(raw: string) { return raw.toLowerCase().match(/-?\
 export function correctAnswer(question: Question, raw: string) {
   if (question.input === "factors") return JSON.stringify(normalizeFactors(raw)) === JSON.stringify([...question.answer as number[]].sort((a, b) => a - b));
   if (question.input === "pair") return JSON.stringify(normalizePair(raw)) === JSON.stringify(question.answer);
+  if (question.input === "oneOf") return (question.answer as number[]).includes(normalizeNumber(raw));
   return normalizeNumber(raw) === question.answer;
 }
 // Kept for compatibility with the original Day 1 tests and any old saved build.

@@ -9,7 +9,8 @@ test("every supported skill generates mathematically valid questions", () => {
     for (let seed = 1; seed < 20; seed += 1) {
       const question = makeQuestion(skill, seededRandom(seed), seed);
       assert.equal(validQuestion(question), true, question.prompt);
-      assert.equal(correctAnswer(question, Array.isArray(question.answer) ? question.answer.join(" × ") : String(question.answer)), true, question.prompt);
+      const canonical = question.input === "oneOf" ? String(question.answer[0]) : Array.isArray(question.answer) ? question.answer.join(" × ") : String(question.answer);
+      assert.equal(correctAnswer(question, canonical), true, question.prompt);
     }
   }
 });
@@ -41,4 +42,20 @@ test("completion updates mastery and grants the next quiet collectible once", ()
     .filter((question) => question.skill === started.session.questions[1].skill).length;
   assert.equal(done.mastery[started.session.questions[1].skill].first, expectedFirstForSecondSkill);
   assert.equal(done.sessions[0].complete, true);
+  assert.deepEqual(completeSession(done, started.session.id, outcomes), done, "completion is idempotent");
+});
+
+test("extra practice strengthens mastery without farming daily objects", () => {
+  const daily = startSession(blankProgress(), "2026-09-08");
+  const firstDone = completeSession(daily.progress, daily.session.id, daily.session.questions.map(() => "first"));
+  const extra = startSession(firstDone, "2026-09-08", true);
+  const extraDone = completeSession(extra.progress, extra.session.id, extra.session.questions.map(() => "first"));
+  assert.equal(extraDone.collectedIds.length, 1);
+  assert.equal(extraDone.sessions.at(-1).rewardId, undefined);
+});
+
+test("factor prompts accept every mathematically valid internal factor", () => {
+  const question = makeQuestion("factors", seededRandom(7), 1);
+  for (const factor of question.answer) assert.equal(correctAnswer(question, String(factor)), true);
+  assert.equal(correctAnswer(question, "1"), false);
 });

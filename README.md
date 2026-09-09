@@ -8,14 +8,15 @@ The loop is deliberately small:
 
 There are no accounts, grades, streaks, rankings, coins, or network services. The
 browser stores progress on the device. Each completed session records a little
-mastery information, prepares future review, and adds one object to the collection.
+mastery information and prepares future review. The first completed session of a
+calendar day adds one object to the collection; optional extra practice does not.
 
 ## What is in this version
 
 - A controlled, generated question system covering multiplication and division facts,
   factors, prime factorization, GCF, LCM, negative numbers, common denominators,
   fraction concepts, exponents, square roots, and order of operations.
-- A daily session model: an unfinished session resumes; a completed day remains
+- A daily session model: an unfinished question resumes after a reload; a completed day remains
   special; optional extra practice is always available.
 - Gentle local mastery tracking that favors material needing review while retaining
   familiar work and occasional stretch material.

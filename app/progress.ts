@@ -2,7 +2,8 @@ import { hash, makeQuestion, seededRandom, skillIds, type Question, type SkillId
 
 export type Outcome = "first" | "retry" | "reviewed";
 export type Mastery = Record<SkillId, { seen: number; first: number; reviewed: number }>;
-export type Session = { id: string; dateKey: string; serial: number; questions: Question[]; warmups: Question[]; complete: boolean; rewardId?: string };
+export type JourneyPhase = "warmupIntro" | "warmup" | "warmupComplete" | "challengeIntro" | "challenge" | "results";
+export type Session = { id: string; dateKey: string; serial: number; questions: Question[]; warmups: Question[]; complete: boolean; extra?: boolean; rewardId?: string; checkpoint?: { phase: JourneyPhase; warmIndex: number; questionIndex: number; outcomes: Outcome[] } };
 export type Progress = { version: 2; sound: boolean; voice: boolean; sessions: Session[]; mastery: Mastery; collectedIds: string[]; placedIds: string[] };
 
 export const collectibles = [
@@ -18,22 +19,21 @@ export function dateKey(now = new Date()) { return `${now.getFullYear()}-${Strin
 const score = (entry: Mastery[SkillId]) => entry.seen ? (entry.first - entry.reviewed) / entry.seen : 0;
 export function chooseSkills(mastery: Mastery, date: string, serial: number) {
   const random = seededRandom(hash(`${date}-${serial}-skills`));
-  const review = [...skillIds].sort((a, b) => score(mastery[a]) - score(mastery[b]));
-  const familiar = [...skillIds].sort((a, b) => mastery[b].seen - mastery[a].seen);
-  // The order is intentional: a little review first, familiar work in the
-  // middle, then a few varied prompts. Repetition is allowed here; a skill
-  // that needs attention should quietly return rather than waiting weeks.
-  return [
-    review[0], review[1], review[0],
-    familiar[0], familiar[1],
-    ...Array.from({ length: 5 }, () => skillIds[Math.floor(random() * skillIds.length)]),
-    review[2], skillIds[Math.floor(random() * skillIds.length)],
-  ];
+  const shuffle = (items: SkillId[]) => items.map(item => ({ item, order: random() })).sort((a,b) => a.order-b.order).map(x => x.item);
+  const seen = skillIds.filter(skill => mastery[skill].seen > 0);
+  const newSkills = shuffle(skillIds.filter(skill => mastery[skill].seen === 0));
+  const review = shuffle([...seen]).sort((a, b) => score(mastery[a]) - score(mastery[b]));
+  const mastered = shuffle([...seen]).sort((a, b) => score(mastery[b]) - score(mastery[a]));
+  const stretch = shuffle(["orderOfOperations", "exponents", "squareRoots", "primeFactors", "gcf", "lcm"]);
+  const plan: SkillId[] = [];
+  plan.push(...review.slice(0, 4), ...mastered.slice(0, 3), ...newSkills.slice(0, 4), stretch[0]);
+  for (const skill of shuffle([...skillIds])) if (plan.length < 12) plan.push(skill);
+  return shuffle(plan.slice(0, 12));
 }
-export function createSession(progress: Progress, date: string, serial: number): Session {
+export function createSession(progress: Progress, date: string, serial: number, extra = false): Session {
   const random = seededRandom(hash(`${date}-${serial}-questions`));
   const skills = chooseSkills(progress.mastery, date, serial);
-  return { id: `${date}-${serial}`, dateKey: date, serial, warmups: [], questions: skills.map((skill, index) => makeQuestion(skill, random, index)), complete: false };
+  return { id: `${date}-${serial}`, dateKey: date, serial, warmups: [], questions: skills.map((skill, index) => makeQuestion(skill, random, index)), complete: false, extra, checkpoint: { phase: "warmupIntro", warmIndex: 0, questionIndex: 0, outcomes: [] } };
 }
 export function updateMastery(mastery: Mastery, questions: Question[], outcomes: Outcome[]) {
   const next = structuredClone(mastery);
@@ -44,15 +44,20 @@ export function startSession(progress: Progress, today = dateKey(), extra = fals
   const existing = progress.sessions.find((session) => session.dateKey === today && !session.complete && !extra);
   if (existing) return { progress, session: existing };
   const serial = progress.sessions.length + 1;
-  const session = createSession(progress, today, serial);
+  const session = createSession(progress, today, serial, extra);
   return { progress: { ...progress, sessions: [...progress.sessions, session] }, session };
 }
 export function completeSession(progress: Progress, id: string, outcomes: Outcome[]) {
   const session = progress.sessions.find((item) => item.id === id); if (!session) return progress;
-  const rewardId = collectibles[progress.collectedIds.length % collectibles.length][0];
+  if (session.complete) return progress;
+  const alreadyRewardedToday = progress.sessions.some(item => item.id !== id && item.dateKey === session.dateKey && item.complete && item.rewardId);
+  const rewardId = session.extra || alreadyRewardedToday ? undefined : collectibles[progress.collectedIds.length % collectibles.length][0];
   const sessions = progress.sessions.map((item) => item.id === id ? { ...item, complete: true, rewardId } : item);
-  return { ...progress, sessions, mastery: updateMastery(progress.mastery, session.questions, outcomes), collectedIds: progress.collectedIds.includes(rewardId) ? progress.collectedIds : [...progress.collectedIds, rewardId] };
+  return { ...progress, sessions, mastery: updateMastery(progress.mastery, session.questions, outcomes), collectedIds: rewardId && !progress.collectedIds.includes(rewardId) ? [...progress.collectedIds, rewardId] : progress.collectedIds };
+}
+export function checkpointSession(progress: Progress, id: string, checkpoint: NonNullable<Session["checkpoint"]>) {
+  return { ...progress, sessions: progress.sessions.map(item => item.id === id ? { ...item, checkpoint } : item) };
 }
 export function parseProgress(raw: string | null): Progress {
-  if (!raw) return blankProgress(); try { const value = JSON.parse(raw); if (value.version === 2) return { ...blankProgress(), ...value, mastery: { ...blankMastery(), ...value.mastery } }; } catch {} return blankProgress();
+  if (!raw) return blankProgress(); try { const value = JSON.parse(raw); if (value.version === 2) return { ...blankProgress(), ...value, mastery: { ...blankMastery(), ...value.mastery }, sessions: Array.isArray(value.sessions) ? value.sessions : [] }; } catch {} return blankProgress();
 }
