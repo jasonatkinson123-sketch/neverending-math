@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { correctAnswer, normalizeFactors, normalizeNumber } from "../app/math-input.ts";
 import { makeQuestion, seededRandom, skillIds, validQuestion } from "../app/math-system.ts";
-import { blankProgress, completeSession, startSession } from "../app/progress.ts";
+import { blankProgress, chooseSkills, completeSession, masteryPriority, parseProgress, startSession, updateMastery } from "../app/progress.ts";
 
 test("every supported skill generates mathematically valid questions", () => {
   for (const skill of skillIds) {
@@ -58,4 +58,43 @@ test("factor prompts accept every mathematically valid internal factor", () => {
   const question = makeQuestion("factors", seededRandom(7), 1);
   for (const factor of question.answer) assert.equal(correctAnswer(question, String(factor)), true);
   assert.equal(correctAnswer(question, "1"), false);
+});
+
+test("mastery changes conservatively and spaces repeated success", () => {
+  const progress = blankProgress();
+  const question = makeQuestion("multiplication", seededRandom(3), 1);
+  const afterOne = updateMastery(progress.mastery, [question], ["first"], "2026-09-01");
+  assert.ok(afterOne.multiplication.confidence > .35 && afterOne.multiplication.confidence < .6);
+  let mastery = afterOne;
+  for (let day = 2; day <= 9; day += 1) mastery = updateMastery(mastery, [question], ["first"], `2026-09-${String(day).padStart(2,"0")}`);
+  assert.ok(mastery.multiplication.confidence > .75);
+  assert.ok(mastery.multiplication.intervalDays > afterOne.multiplication.intervalDays);
+});
+
+test("reviewed work becomes higher priority and returns sooner by skill", () => {
+  const progress = blankProgress();
+  const multiply = makeQuestion("multiplication", seededRandom(4), 1);
+  const negatives = makeQuestion("negatives", seededRandom(5), 1);
+  let mastery = progress.mastery;
+  for (let day = 1; day <= 7; day += 1) mastery = updateMastery(mastery, [multiply], ["first"], `2026-08-0${day}`);
+  mastery = updateMastery(mastery, [negatives, negatives], ["reviewed", "reviewed"], "2026-08-07");
+  assert.ok(masteryPriority(mastery.negatives, "2026-08-09") > masteryPriority(mastery.multiplication, "2026-08-09"));
+  const selected = chooseSkills(mastery, "2026-08-09", 8, ["multiplication", "negatives"]);
+  assert.ok(selected.filter(skill => skill === "negatives").length >= selected.filter(skill => skill === "multiplication").length);
+});
+
+test("active concept settings persist and strictly constrain future sessions", () => {
+  const progress = { ...blankProgress(), activeSkills: ["fractions", "commonDenominators"] };
+  const restored = parseProgress(JSON.stringify(progress));
+  assert.deepEqual(restored.activeSkills, progress.activeSkills);
+  const started = startSession(restored, "2026-09-12");
+  assert.ok(started.session.questions.every(question => progress.activeSkills.includes(question.skill)));
+});
+
+test("a new collection is empty and the first daily reward is the bell", () => {
+  const fresh = blankProgress();
+  assert.deepEqual(fresh.collectedIds, []);
+  const started = startSession(fresh, "2026-09-13");
+  const done = completeSession(started.progress, started.session.id, started.session.questions.map(() => "first"));
+  assert.deepEqual(done.collectedIds, ["bell"]);
 });

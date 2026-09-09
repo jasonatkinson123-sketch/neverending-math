@@ -21,6 +21,15 @@ export const skillNames: Record<SkillId, string> = {
 
 export const skillIds = Object.keys(skillNames) as SkillId[];
 
+export const skillGroups = [
+  { name: "FOUNDATIONS", skills: ["multiplication", "division"] },
+  { name: "NEGATIVE NUMBERS", skills: ["negatives"] },
+  { name: "FACTORS & MULTIPLES", skills: ["factors", "primeFactors", "gcf", "lcm"] },
+  { name: "FRACTIONS", skills: ["fractions", "commonDenominators"] },
+  { name: "EXPONENTS & ROOTS", skills: ["exponents", "squareRoots"] },
+  { name: "ORDER OF OPERATIONS", skills: ["orderOfOperations"] },
+] satisfies Array<{ name: string; skills: SkillId[] }>;
+
 export function seededRandom(seed: number) {
   let value = seed >>> 0;
   return () => ((value = (value * 1664525 + 1013904223) >>> 0) / 4294967296);

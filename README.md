@@ -18,10 +18,17 @@ calendar day adds one object to the collection; optional extra practice does not
   fraction concepts, exponents, square roots, and order of operations.
 - A daily session model: an unfinished question resumes after a reload; a completed day remains
   special; optional extra practice is always available.
-- Gentle local mastery tracking that favors material needing review while retaining
-  familiar work and occasional stretch material.
+- Conservative skill-by-skill mastery tracking records first tries, retries,
+  reviews, recent errors, confidence, recency, and a 1–14 day spacing interval.
+  Daily selection mixes due review, current work, secure maintenance, and stretch.
+- Settings can enable or disable individual concepts. The active concept list is
+  stored on the device and strictly constrains newly created sessions.
 - Thirty named old-study collectibles, beginning with the brass school bell.
-- Typed input is always available. Voice is optional and fails gently back to typing.
+- A new collection is empty. The first daily completion discovers the brass school
+  bell; later daily completions add one object at a time.
+- Typed input is always available. Once voice is started in the warm-up, recognition
+  rearms between facts; denied, unsupported, or repeated failures stop cleanly and
+  leave typing ready.
 - Device-local persistence in localStorage; append ?reset=1 to clear this
   device's progress while testing.
 
