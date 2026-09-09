@@ -49,3 +49,6 @@ calendar day adds one object to the collection; optional extra practice does not
 ## Running checks
 
 Run npm test to build the Vinext/Sites artifact and run the regression tests.
+
+Run npm run diagnose:30-days to execute the deterministic month-long learner simulation and
+print its per-skill outcome, confidence, spacing, reward, Settings, and resume diagnostics.
