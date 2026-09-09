@@ -39,19 +39,47 @@ export function chooseSkills(mastery: Mastery, date: string, serial: number, act
   const allowed = skillIds.filter(skill => activeSkills.includes(skill));
   if (!allowed.length) return [];
   const seen = allowed.filter(skill => mastery[skill].seen > 0);
-  const newSkills = shuffle(allowed.filter(skill => mastery[skill].seen === 0));
-  const review = shuffle(seen.filter(skill => isDue(mastery[skill], date))).sort((a, b) => masteryPriority(mastery[b], date) - masteryPriority(mastery[a], date));
-  const secure = shuffle(seen.filter(skill => mastery[skill].confidence >= .72)).sort((a, b) => mastery[a].confidence - mastery[b].confidence);
-  const current = shuffle(seen.filter(skill => mastery[skill].confidence < .72 && !review.includes(skill)));
-  const stretch = shuffle((["orderOfOperations", "exponents", "squareRoots", "primeFactors", "gcf", "lcm"] as SkillId[]).filter(skill => allowed.includes(skill)));
+  const introduced = shuffle(allowed.filter(skill => mastery[skill].seen === 0)).slice(0, seen.length ? 1 : 3);
+  const core = seen.filter(skill => {
+    const entry = mastery[skill];
+    return isDue(entry, date) || entry.confidence < .72 || entry.recentErrors >= 2;
+  });
+  const secureNotDue = seen
+    .filter(skill => !core.includes(skill))
+    .sort((a, b) => (mastery[a].nextDue ?? "").localeCompare(mastery[b].nextDue ?? "") || (mastery[a].lastSeen ?? "").localeCompare(mastery[b].lastSeen ?? ""));
+
+  // Two questions is the ordinary per-skill ceiling. With very few eligible concepts
+  // (including a single concept selected in Settings), it expands only enough to make 12.
+  const candidates = [...core, ...introduced];
+  const ordinaryMaximum = 2;
+  const minimumDistinct = Math.min(allowed.length, Math.ceil(12 / ordinaryMaximum));
+  for (const skill of secureNotDue) {
+    if (candidates.length >= minimumDistinct) break;
+    candidates.push(skill);
+  }
+  if (!candidates.length) candidates.push(...secureNotDue.slice(0, 1));
+  const maximumPerSkill = Math.max(ordinaryMaximum, Math.ceil(12 / candidates.length));
+  const counts = Object.fromEntries(allowed.map(skill => [skill, 0])) as Record<SkillId, number>;
   const plan: SkillId[] = [];
-  plan.push(...review.slice(0, 3));
-  if (review[0]) plan.push(review[0]);
-  plan.push(...secure.slice(0, 2), ...current.slice(0, 2), ...newSkills.slice(0, 3));
-  if (stretch[0]) plan.push(stretch[0]);
-  const refill = shuffle([...allowed]);
-  for (let index = 0; plan.length < 12; index += 1) plan.push(refill[index % refill.length]);
-  return shuffle(plan.slice(0, 12));
+
+  // A selected new skill is guaranteed one encounter, but no other path can introduce it.
+  for (const skill of introduced) { plan.push(skill); counts[skill] += 1; }
+  while (plan.length < 12) {
+    const available = candidates.filter(skill => counts[skill] < maximumPerSkill);
+    if (!available.length) break;
+    const weighted = available.map(skill => {
+      const entry = mastery[skill];
+      const due = entry.seen > 0 && isDue(entry, date);
+      const weight = entry.seen === 0 ? 2.4
+        : 1 + (due ? 3 : 0) + (1 - entry.confidence) * 4 + Math.min(3, entry.recentErrors * .45);
+      return { skill, weight: weight / (1 + counts[skill] * 1.35) };
+    });
+    const total = weighted.reduce((sum, item) => sum + item.weight, 0);
+    let draw = random() * total;
+    const selected = weighted.find(item => (draw -= item.weight) <= 0)?.skill ?? weighted.at(-1)!.skill;
+    plan.push(selected); counts[selected] += 1;
+  }
+  return shuffle(plan);
 }
 export function createSession(progress: Progress, date: string, serial: number, extra = false): Session {
   const random = seededRandom(hash(`${date}-${serial}-questions`));
@@ -66,17 +94,35 @@ export function sessionIsCompatible(session: Session, activeSkills: SkillId[]) {
 }
 export function updateMastery(mastery: Mastery, questions: Question[], outcomes: Outcome[], completedOn: string) {
   const next = structuredClone(mastery);
-  questions.forEach((question, index) => {
-    const outcome = outcomes[index] ?? "reviewed", entry = next[question.skill];
-    entry.seen += 1; entry[outcome] += 1;
-    if (outcome !== "reviewed") entry.successful += 1;
-    entry.recentErrors = outcome === "first" ? Math.max(0, entry.recentErrors - 1) : Math.min(8, entry.recentErrors + (outcome === "reviewed" ? 2 : 1));
-    entry.confidence = Math.max(.08, Math.min(.96, entry.confidence * .8 + outcomeValue[outcome] * .2));
-    entry.recent = [...entry.recent, outcome].slice(-6);
-    entry.intervalDays = outcome === "reviewed" ? 1 : Math.max(1, Math.min(14, 1 + Math.floor(entry.confidence * 6) + Math.floor(entry.successful / 4)));
+  const evidence = new Map<SkillId, Outcome[]>();
+  questions.forEach((question, index) => evidence.set(question.skill, [...(evidence.get(question.skill) ?? []), outcomes[index] ?? "reviewed"]));
+  for (const [skill, skillOutcomes] of evidence) {
+    const entry = next[skill];
+    const first = skillOutcomes.filter(outcome => outcome === "first").length;
+    const retry = skillOutcomes.filter(outcome => outcome === "retry").length;
+    const reviewed = skillOutcomes.filter(outcome => outcome === "reviewed").length;
+    entry.seen += skillOutcomes.length; entry.first += first; entry.retry += retry; entry.reviewed += reviewed;
+    entry.successful += first + retry;
+    entry.recentErrors = reviewed ? Math.min(8, entry.recentErrors + 2)
+      : retry ? Math.min(8, entry.recentErrors + 1)
+      : Math.max(0, entry.recentErrors - 1);
+    let evidenceValue = skillOutcomes.reduce((sum, outcome) => sum + outcomeValue[outcome], 0) / skillOutcomes.length;
+    if (reviewed) evidenceValue = Math.min(evidenceValue, .35);
+    else if (retry) evidenceValue = Math.min(evidenceValue, .75);
+    const influence = Math.min(.26, .18 + (skillOutcomes.length - 1) * .04);
+    entry.confidence = Math.max(.08, Math.min(.96, entry.confidence * (1 - influence) + evidenceValue * influence));
+    if (entry.recentErrors >= 6) entry.confidence = Math.min(entry.confidence, .65);
+    else if (entry.recentErrors >= 3) entry.confidence = Math.min(entry.confidence, .78);
+    entry.recent = [...entry.recent, ...skillOutcomes].slice(-6);
+    if (reviewed) entry.intervalDays = 1;
+    else if (retry) entry.intervalDays = Math.min(entry.recentErrors >= 3 || entry.confidence < .55 ? 2 : 3, 1 + Math.floor(entry.confidence * 3));
+    else {
+      const earned = Math.max(entry.intervalDays + 1, 1 + Math.floor(entry.confidence * 7));
+      entry.intervalDays = Math.min(14, entry.recentErrors >= 3 ? 2 : entry.confidence < .55 ? 2 : earned);
+    }
     entry.lastSeen = completedOn;
     const due = new Date(`${completedOn}T12:00:00Z`); due.setUTCDate(due.getUTCDate() + entry.intervalDays); entry.nextDue = due.toISOString().slice(0, 10);
-  });
+  }
   return next;
 }
 export function startSession(progress: Progress, today = dateKey(), extra = false) {

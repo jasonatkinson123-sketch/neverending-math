@@ -105,6 +105,38 @@ test("reviewed work becomes higher priority and returns sooner by skill", () => 
   assert.ok(selected.filter(skill => skill === "negatives").length >= selected.filter(skill => skill === "multiplication").length);
 });
 
+test("new concepts are introduced gradually and ordinary duplication is bounded", () => {
+  const selected = chooseSkills(blankProgress().mastery, "2026-09-09", 1);
+  const introduced = new Set(selected);
+  assert.equal(selected.length, 12);
+  assert.ok(introduced.size <= 3, "only three unseen concepts may be introduced in one session");
+  for (const skill of introduced) assert.ok(selected.filter(item => item === skill).length <= 4, `${skill} should not dominate the first session`);
+
+  let mastery = blankProgress().mastery;
+  const questions = selected.map((skill, index) => makeQuestion(skill, seededRandom(index + 20), index));
+  mastery = updateMastery(mastery, questions, questions.map(() => "first"), "2026-09-09");
+  const next = chooseSkills(mastery, "2026-09-10", 2);
+  const newlySeen = new Set(next.filter(skill => mastery[skill].seen === 0));
+  assert.ok(newlySeen.size <= 1, "later sessions introduce at most one unseen concept");
+});
+
+test("same-day reviewed evidence keeps a short interval despite a later success", () => {
+  const progress = blankProgress();
+  const question = makeQuestion("fractions", seededRandom(9), 1);
+  const mixed = updateMastery(progress.mastery, [question, question, question], ["reviewed", "retry", "first"], "2026-09-09");
+  assert.equal(mixed.fractions.intervalDays, 1);
+  assert.equal(mixed.fractions.nextDue, "2026-09-10");
+  assert.ok(mixed.fractions.confidence < .4);
+});
+
+test("repeated retry success stays on short spacing", () => {
+  const progress = blankProgress();
+  const question = makeQuestion("negatives", seededRandom(11), 1);
+  const retried = updateMastery(progress.mastery, [question, question, question], ["retry", "retry", "retry"], "2026-09-09");
+  assert.ok(retried.negatives.intervalDays <= 2);
+  assert.ok(retried.negatives.confidence < .5);
+});
+
 test("active concept settings persist and strictly constrain future sessions", () => {
   let progress = blankProgress();
   progress = setSkillEnabled(progress, "squareRoots", false);
