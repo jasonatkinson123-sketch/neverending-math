@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { correctAnswer, normalizeFactors, normalizeNumber } from "../app/math-input.ts";
 import { makeQuestion, seededRandom, skillIds, validQuestion, warmupFor } from "../app/math-system.ts";
+import { questionDisplay, questionDisplayClass } from "../app/question-display.ts";
 import { blankProgress, checkpointSession, chooseSkills, completeSession, masteryPriority, parseProgress, sessionIsCompatible, setSkillEnabled, startSession, updateMastery } from "../app/progress.ts";
 
 test("every supported skill generates mathematically valid questions", () => {
@@ -13,6 +14,19 @@ test("every supported skill generates mathematically valid questions", () => {
       assert.equal(correctAnswer(question, canonical), true, question.prompt);
     }
   }
+});
+
+test("every generated skill receives a safe question display treatment", () => {
+  for (const skill of skillIds) {
+    for (let seed = 0; seed < 100; seed += 1) {
+      const question = makeQuestion(skill, seededRandom(seed), seed);
+      assert.ok(["expression", "sentence", "sentence-long"].includes(questionDisplay(question)), question.prompt);
+      assert.match(questionDisplayClass(question), /^challenge-(expression|sentence|sentence-long)$/);
+    }
+  }
+  assert.equal(questionDisplay({ skill: "multiplication", prompt: "12 × 12 = ?" }), "expression");
+  assert.equal(questionDisplay({ skill: "primeFactors", prompt: "List the prime factors of 42." }), "sentence");
+  assert.equal(questionDisplay({ skill: "commonDenominators", prompt: "What is the least common denominator for 1/6 and 1/8?" }), "sentence-long");
 });
 
 test("normalizes ordinary typed answers without accepting malformed values", () => {

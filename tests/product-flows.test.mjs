@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
 import { collectibles } from "../app/collectibles.ts";
-import { blankProgress, completeSession, parseProgress, startSession } from "../app/progress.ts";
+import { blankProgress, checkpointSession, completeSession, dateKey, parseProgress, startSession } from "../app/progress.ts";
 
 const storageKey = "neverending-math-progress-v2";
 let vite;
@@ -119,6 +119,22 @@ test("Settings selection persists through navigation and reload and controls ses
   await act(async () => { mounted.root.unmount(); });
 });
 
+test("a long generated prompt renders in the challenge with its wrapped display treatment", async () => {
+  const fresh = { ...blankProgress(), activeSkills: ["commonDenominators"] };
+  const started = startSession(fresh, dateKey());
+  const checkpointed = checkpointSession(started.progress, started.session.id, { phase: "challenge", warmIndex: 0, questionIndex: 0, outcomes: [] });
+  const mounted = await renderApp(JSON.stringify(checkpointed));
+  await click(button("Enter Neverending Math"));
+  await click(button("Begin today’s mathematics"));
+  const question = document.querySelector(".challenge-live-question");
+  assert.ok(question);
+  assert.equal(question.dataset.questionDisplay, "sentence-long");
+  assert.ok(question.textContent.trim().length > 40);
+  assert.ok(button("CHECK ANSWER →"));
+  assert.ok(button("SKIP"));
+  await act(async () => { mounted.root.unmount(); });
+});
+
 test("a fresh collection is empty and displays the first earned Bell", async () => {
   let mounted = await renderApp();
   await click(button("Enter Neverending Math"));
@@ -165,7 +181,7 @@ test("the full collection exposes every discovery exactly once, including first 
 });
 
 test("an early unplaced object remains selectable and placeable after later discoveries", async () => {
-  const mounted = await openCollection(collectionProgress(20, ["pen"]));
+  let mounted = await openCollection(collectionProgress(20, ["pen"]));
   await click(button("Inspect OLD BRASS SCHOOL BELL"));
   await click(button("PLACE IN THE STUDY →"));
   assert.match(document.body.textContent, /OLD BRASS SCHOOL BELL/);
@@ -176,6 +192,14 @@ test("an early unplaced object remains selectable and placeable after later disc
   await click(button("Return to collection"));
   assert.ok(button("Inspect OLD BRASS SCHOOL BELL"));
   assert.match(button("Inspect OLD BRASS SCHOOL BELL").textContent, /IN THE STUDY/);
+  await act(async () => { mounted.root.unmount(); });
+
+  mounted = await openCollection(JSON.stringify(saved));
+  await click(button("Inspect OLD BRASS SCHOOL BELL"));
+  await click(button("VIEW IN THE STUDY →"));
+  assert.ok(button("Inspect OLD BRASS SCHOOL BELL in the Study"));
+  assert.equal(button("PLACE THIS IN THE STUDY →"), undefined);
+  assert.equal(parseProgress(stored()).placedIds.filter(id => id === "bell").length, 1);
   await act(async () => { mounted.root.unmount(); });
 });
 
