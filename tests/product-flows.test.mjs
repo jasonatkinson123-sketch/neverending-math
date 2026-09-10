@@ -6,7 +6,8 @@ import { createRoot } from "react-dom/client";
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
 import { collectibles } from "../app/collectibles.ts";
-import { blankProgress, checkpointSession, completeSession, dateKey, parseProgress, startSession } from "../app/progress.ts";
+import { blankProgress, completeSession, parseProgress, startSession } from "../app/progress.ts";
+import { fixtureProgress, representativeQuestions } from "./playability-fixtures.mjs";
 
 const storageKey = "neverending-math-progress-v2";
 let vite;
@@ -119,19 +120,36 @@ test("Settings selection persists through navigation and reload and controls ses
   await act(async () => { mounted.root.unmount(); });
 });
 
-test("a long generated prompt renders in the challenge with its wrapped display treatment", async () => {
-  const fresh = { ...blankProgress(), activeSkills: ["commonDenominators"] };
-  const started = startSession(fresh, dateKey());
-  const checkpointed = checkpointSession(started.progress, started.session.id, { phase: "challenge", warmIndex: 0, questionIndex: 0, outcomes: [] });
-  const mounted = await renderApp(JSON.stringify(checkpointed));
+test("every representative prompt renders in the contained Challenge surface", async () => {
+  for (const [skill, expected] of Object.entries(representativeQuestions)) {
+    const mounted = await renderApp(JSON.stringify(fixtureProgress({ skill })));
+    await click(button("Enter Neverending Math"));
+    await click(button("Begin today’s mathematics"));
+    const layout = document.querySelector(".challenge-layout");
+    const question = document.querySelector(".challenge-question");
+    const form = document.querySelector(".challenge-answer-form");
+    assert.ok(layout, `${skill} needs the Challenge layout`);
+    assert.equal(question?.textContent, expected.prompt);
+    assert.ok(question?.dataset.questionDisplay);
+    assert.ok(form?.querySelector("input"));
+    assert.ok(form?.querySelector("button"));
+    assert.ok(button("SKIP"));
+    await act(async () => { mounted.root.unmount(); });
+  }
+});
+
+test("Challenge keeps review feedback separate from the answer controls", async () => {
+  const mounted = await renderApp(JSON.stringify(fixtureProgress({ skill: "primeFactors" })));
   await click(button("Enter Neverending Math"));
   await click(button("Begin today’s mathematics"));
-  const question = document.querySelector(".challenge-live-question");
-  assert.ok(question);
-  assert.equal(question.dataset.questionDisplay, "sentence-long");
-  assert.ok(question.textContent.trim().length > 40);
-  assert.ok(button("CHECK ANSWER →"));
-  assert.ok(button("SKIP"));
+  await click(button("SKIP"));
+  const feedback = document.querySelector(".challenge-feedback");
+  const form = document.querySelector(".challenge-answer-form");
+  assert.match(feedback?.textContent ?? "", /LET’S REVIEW IT/);
+  assert.equal(form?.contains(feedback), false);
+  assert.equal(document.querySelector("#main-answer")?.disabled, true);
+  assert.match(document.body.textContent, /FORMAT: 2 × 2 × 3/);
+  assert.ok(button("CONTINUE →"));
   await act(async () => { mounted.root.unmount(); });
 });
 

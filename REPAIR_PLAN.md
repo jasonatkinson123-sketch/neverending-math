@@ -117,3 +117,52 @@ browser evidence must not be fabricated from jsdom or force-clicks.
 - a 9th and later Study placement that stays accessible;
 - rapid submission, reload during retry/review, and late-timer behavior;
 - keyboard-only traversal and voice-failure fallback in the browser.
+
+## Stage 1 update — Challenge layout repair
+
+### Change made
+
+The Challenge now has one `.challenge-layout` content surface above the unchanged board art.
+It uses a grid to reserve distinct regions for the session label, question, feedback, answer
+controls, optional factor-format instruction, and Skip action. The old percentage-positioned
+Challenge elements are no longer rendered. The question uses container-query sizing: compact
+expressions retain a large presentation, while sentence prompts wrap in their bounded region.
+The surface can scroll rather than clip when a short viewport or on-screen keyboard reduces
+available height. Portrait Challenge mode expands the interactive stage to the dynamic viewport
+and switches answer controls to one column.
+
+Every answer action has a `min-height` of `2.75rem` (44 CSS pixels), and feedback is a normal
+grid row rather than an element that can paint over the form.
+
+### Automated coverage added
+
+- `tests/product-flows.test.mjs` mounts the real Challenge for the deterministic representative
+  prompt of every supported skill, verifies the contained question surface and the actual input,
+  Check, and Skip controls, and tests review feedback plus the prime-factor format instruction.
+- The fixtures still use production question/session functions and remain test-only.
+
+### Actual browser evidence
+
+At the available browser viewport of **1363 × 936**, a normal live session was taken through all
+eight warm-up facts and into the Challenge. The generated GCF sentence prompt, retry hint, and
+review explanation were measured in the rendered page:
+
+- question: `top 372.34`, `bottom 465.56`;
+- feedback: `top 678.84`, `bottom 730.84`;
+- answer form: `top 742.06`, `bottom 828.13`;
+- Skip: `top 839.34`, `bottom 883.34`, `height 44`.
+
+Those regions do not overlap; the input and submit controls measured 58.88 px high. This is
+real-browser evidence for a desktop-width viewport, not a substitute for the requested fixed
+phone, Chromebook, and desktop sizes.
+
+### Verification status after this stage
+
+| Gate | Status |
+| --- | --- |
+| `npm test` | **Passes: 39 tests.** Build, component/flow tests, fixtures, and existing regression tests pass. |
+| `npm run diagnose:30-days` | **Passes:** 30 daily sessions, 30 distinct collectibles. The pre-existing LCM secure/not-due repetition diagnostic remains reported; this layout-only stage did not alter adaptive behavior. |
+| 390 × 844 phone / portrait and landscape | Unverified: the cloud browser API cannot set a viewport. The responsive CSS path is covered structurally but needs a browser capable of fixed viewport emulation. |
+| 1366 × 768 Chromebook | Partially observed only at 1363 × 936; height-specific verification remains outstanding. |
+| 1440 × 900 desktop | Unverified: the cloud browser API cannot resize. |
+| Automated browser keyboard navigation | Unverified: the available browser API has no supported keyboard-input method. |

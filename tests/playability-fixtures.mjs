@@ -1,6 +1,6 @@
 import { collectibles } from "../app/collectibles.ts";
 import { makeQuestion, seededRandom, skillIds } from "../app/math-system.ts";
-import { blankProgress, checkpointSession, startSession } from "../app/progress.ts";
+import { blankProgress, checkpointSession, dateKey, startSession } from "../app/progress.ts";
 
 const candidatesFor = (skill) => Array.from({ length: 160 }, (_, seed) => makeQuestion(skill, seededRandom(seed), seed));
 
@@ -16,9 +16,9 @@ export const challengeStates = [
   { name: "prime-factor-format", feedback: "", detail: "", skill: "primeFactors" },
 ];
 
-export function fixtureProgress({ skill = "commonDenominators", collected = 0, placed = [] } = {}) {
+export function fixtureProgress({ skill = "commonDenominators", collected = 0, placed = [], date = dateKey() } = {}) {
   const progress = { ...blankProgress(), collectedIds: collectibles.slice(0, collected).map(([id]) => id), placedIds: placed };
-  const started = startSession(progress, "2026-09-10");
+  const started = startSession(progress, date);
   const question = representativeQuestions[skill];
   const session = { ...started.session, questions: [question, ...started.session.questions.slice(1)] };
   const withSession = { ...started.progress, sessions: started.progress.sessions.map((item) => item.id === session.id ? session : item) };
