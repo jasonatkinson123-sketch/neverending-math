@@ -455,7 +455,7 @@ logs. It has read-only contents permission and no deployment step.
   browser execution. Its report, trace, screenshots, and videos will identify
   either test-infrastructure faults or real application failures.
 - The committed test branch is `test/browser-infra` at
-  `2825b34c262bf218ae9f591f2bc62268265f5cb0`.
+  `f8a4f3dbc5146ac3739ed9c2895c39331fff5f3e`.
 - The configured GitHub connection can push commits and read Actions runs, logs,
   and artifacts, but it exposes no workflow-dispatch operation. It therefore
   could not start the required manual run. To run it, open
