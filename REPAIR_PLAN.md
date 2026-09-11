@@ -336,3 +336,64 @@ In a browser runner that supports preloading an isolated test profile and fixed 
    panel/action, Return, and Go Home controls, and verify no pair overlaps.
 5. Repeat with the small-collection fixture and an already-placed fixture. PASS requires all three
    viewport journeys to succeed without forced clicks and without exposing unearned objects.
+
+## Stage 0 — Browser-test infrastructure capability check — 2026-09-11
+
+**Baseline commit:** `c7b65dbcfeff701e4c1badb1615489db99ee59da` — *Record Collection placement verification*.
+
+**Verdict: BLOCKED before implementation.** No production or learner-facing test-hook change was
+made. The requested browser harness cannot be built or executed within the permitted capabilities
+of this checkout and execution environment.
+
+### What was checked
+
+- The checkout contains deterministic, test-only fixtures in `tests/playability-fixtures.mjs` and
+  component-flow coverage in `tests/product-flows.test.mjs`.
+- `package.json` has no Playwright, Puppeteer, WebDriver, or other browser-runner dependency or
+  script. `@playwright/test` appears only as an unresolved optional transitive entry in
+  `package-lock.json`; it is not installed or resolvable in `node_modules`.
+- No local Chromium, Chrome, Firefox, or Playwright browser executable is available in the runtime.
+- The permitted supervised cloud-browser API supports ordinary navigation, click, keyboard, scroll,
+  and read-only DOM/bounds inspection, but does **not** expose viewport creation/resizing/emulation
+  or writable pre-start storage. Its page evaluation API is explicitly read-only.
+
+### Consequence
+
+The environment can still prove a normal small-collection journey at its fixed **1363 × 936**
+viewport, as recorded above. It cannot safely or reproducibly do any of the required work below:
+
+- open the real app at 390 × 844, 1366 × 768, and 1440 × 900;
+- pre-load the existing 30-object fixture before application startup;
+- reload that isolated fixture after an interaction; or
+- run the 30-object early/late placement smoke test without attempting to manufacture thirty real
+  daily completions through the UI.
+
+Adding a learner-reachable storage override, writing through the cloud browser's read-only page
+evaluation API, or replacing geometry evidence with jsdom would violate this repair stage's
+boundaries. None was attempted.
+
+### Required handoff to unblock Stage 1
+
+Run the following in a trusted development/CI environment that provides a local browser executable
+and allows a conventional browser runner (for example Playwright with its managed Chromium):
+
+1. Add the runner as a **development-only** dependency and install its managed browser.
+2. Start the existing application normally for test runs.
+3. Use an isolated browser context per test. Add the existing
+   `neverending-math-progress-v2` fixture to that context's localStorage **before** page navigation,
+   then navigate to the ordinary application entry point.
+4. Drive only ordinary visible controls; use no forced clicks. Run at 390 × 844, 1366 × 768, and
+   1440 × 900.
+5. Reuse `tests/playability-fixtures.mjs` for representative Challenge states, empty/small
+   collection, 30-object early Bell, 30-object late LAMP PULL, and already-placed inspection.
+6. Assert visible controls, scroll reachability, keyboard focus, bounds containment, non-overlap,
+   44 px targets, reload persistence, exactly-once placement, and no unearned objects.
+
+The fixture belongs solely to the browser context created by each test, never to ordinary learner
+storage. This gives the needed test isolation without any production fixture loader or reward seed.
+
+### Next stage once the handoff environment exists
+
+Implement only the conventional browser-runner configuration and smoke tests described above.
+Do not repair any learner-facing layout or placement behavior in that stage. Preserve any failing
+browser assertion as the evidence for the following, narrowly scoped production repair.
