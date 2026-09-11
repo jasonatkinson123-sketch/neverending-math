@@ -227,3 +227,43 @@ The cause is the container-relative minima in `app/globals.css`:
 The exact cross-viewport fitting gap is additionally caused by the lack of a browser-reachable,
 development-only fixture seam and a fixed-viewport browser runner; current tests cannot establish
 layout bounds at the required sizes.
+
+## Stage 2 update — Challenge blocker and Collection → Study repair
+
+### Changes made
+
+- Challenge Check/Continue and Skip now have a 14 px minimum font size inside the responsive
+  Challenge layout, resolving the concrete desktop readability failure recorded above.
+- Study now renders a single `study-placement-panel` for the inspected object. Its details,
+  description, placed state, and—only while the exact selected object is pending—its placement
+  action occupy one stable, high-z-index surface above the artwork.
+- The placement action has a 44 px minimum height, an object-specific accessible name, and is
+  removed immediately after placement. Inspecting an already-placed object shows `IN THE STUDY`
+  but no placement action.
+- Existing `pendingPlacementId` and `placedIds` semantics are preserved. The state updater remains
+  idempotent, so repeated clicks cannot add the same object twice. Returning to Collection clears
+  pending placement without changing `placedIds`.
+
+The eight visual Study positions remain intentionally unchanged. A 9th and later placed object
+can still share a room position, but that does not obstruct the independent placement panel or
+make an older collection object unreachable. A full 30-object artistic room layout remains a
+separate, documented future stage.
+
+### Tests and regression checks
+
+- Added a 30-object late-discovery flow: select LAMP PULL, cancel, confirm no placement, place it,
+  reload, then inspect it without a misleading placement affordance.
+- Existing early-object, persistence, duplicate-prevention, empty-collection, and full-collection
+  tests remain in place.
+- `npm test` passes: **40 tests**.
+- `npm run diagnose:30-days` passes unchanged: 30 daily sessions and 30 distinct collectibles.
+
+### Browser verification limitation
+
+The supervised browser still cannot set phone, Chromebook, or desktop target viewports, and its
+session runner timed out while completing the 12-question path required to earn a fresh live Bell.
+No browser evidence has been claimed for a completed Collection → Study flow in this stage.
+The interaction is covered through the real React component and persistence functions in the
+automated flow tests; browser verification of the exact requested device matrix remains
+**unverified** and must be completed in an environment that supports fixed viewport emulation and
+a stable longer-running session.

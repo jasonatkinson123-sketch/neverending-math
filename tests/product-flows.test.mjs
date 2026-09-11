@@ -221,6 +221,31 @@ test("an early unplaced object remains selectable and placeable after later disc
   await act(async () => { mounted.root.unmount(); });
 });
 
+test("a late discovery can be cancelled, placed once, and retained after reload", async () => {
+  let mounted = await openCollection(collectionProgress(30, ["bell", "pen"]));
+  await click(button("Inspect LAMP PULL"));
+  await click(button("PLACE IN THE STUDY →"));
+  assert.match(document.body.textContent, /LAMP PULL/);
+  assert.ok(button("Place LAMP PULL in the Study"));
+  await click(button("Return to collection"));
+  assert.equal(parseProgress(stored()).placedIds.includes("lamp"), false);
+
+  await click(button("Inspect LAMP PULL"));
+  await click(button("PLACE IN THE STUDY →"));
+  await click(button("Place LAMP PULL in the Study"));
+  await click(button("Return to collection"));
+  const once = parseProgress(stored());
+  assert.equal(once.placedIds.filter(id => id === "lamp").length, 1);
+
+  await act(async () => { mounted.root.unmount(); });
+  mounted = await openCollection(JSON.stringify(once));
+  await click(button("Inspect LAMP PULL"));
+  await click(button("VIEW IN THE STUDY →"));
+  assert.match(document.body.textContent, /IN THE STUDY/);
+  assert.equal(button("Place LAMP PULL in the Study"), undefined);
+  await act(async () => { mounted.root.unmount(); });
+});
+
 test("an interrupted session resumes its stored content and checkpoint", async () => {
   let mounted = await renderApp();
   await click(button("Enter Neverending Math"));
