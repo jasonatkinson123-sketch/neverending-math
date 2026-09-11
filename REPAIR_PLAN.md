@@ -397,3 +397,71 @@ storage. This gives the needed test isolation without any production fixture loa
 Implement only the conventional browser-runner configuration and smoke tests described above.
 Do not repair any learner-facing layout or placement behavior in that stage. Preserve any failing
 browser assertion as the evidence for the following, narrowly scoped production repair.
+## Stage 0.5 — Browser-test infrastructure (in progress)
+
+**Baseline:** `7f26caa41bc267b5220a941b05f6149085911080` (`Record browser test infrastructure blocker`)
+
+### Test-only architecture
+
+- `npm run test:browser` first runs `scripts/prepare-browser-fixtures.mjs`. It
+  loads the existing TypeScript fixture module through Vite SSR and writes only
+  transient JSON to `.tmp/browser-fixtures.json`.
+- Playwright reads that JSON in a fresh browser context for each scenario. An
+  init script writes the real production key, `neverending-math-progress-v2`,
+  before the application loads and fixes the session date to `2032-06-14`.
+  Reloads retain changes made by the application because the seed runs only at
+  context setup, never on navigation.
+- The suite drives the application root and its normal UI. There are no fixture
+  routes, learner-visible controls, or changes to production persistence.
+- Chromium projects cover 390×844 phone viewport, 1366×768 Chromebook viewport,
+  and 1440×900 desktop viewport. Phone Chromium checks responsive viewport
+  behavior; it does not verify iPhone Safari or a physical mobile keyboard.
+
+### Commands and CI
+
+```sh
+npm ci
+npx playwright install --with-deps chromium
+npm test
+npm run diagnose:30-days
+npm run test:browser
+```
+
+The manually triggered **Browser tests** workflow is in
+`.github/workflows/browser-tests.yml`. It uses Node 22.13.0, installs Chromium
+on GitHub-hosted Linux, runs the three commands above, and always uploads
+`playwright-report/`, `test-results/`, generated fixture JSON, and Wrangler
+logs. It has read-only contents permission and no deployment step.
+
+### Fixture and scenario coverage
+
+- One widest deterministic generated challenge prompt for each of the 12 skills.
+- Retry/review reached through ordinary wrong answer submission, plus the real
+  prime-factor format guidance and keyboard activation.
+- Empty, three-object, and full 30-object collections.
+- A Bell and LAMP PULL each unplaced in separate 30-object states, including
+  normal scrolling, placement, reload, placed inspection, and duplicate checks.
+- Real rendered geometry for containment/clipping, feedback/input/action
+  separation, 44px controls, and ordinary click/keyboard reachability.
+
+### Verification status and next step
+
+- Fixture preparation succeeded locally: 12 supported skills and 30 collectible
+  IDs were generated from production modules.
+- `npm run start -- --hostname 127.0.0.1 --port 4173` starts a normal production
+  Vinext server locally.
+- This Work environment still has no installed Chromium; browser assertions are
+  deliberately unverified locally. The GitHub Actions run is the authoritative
+  browser execution. Its report, trace, screenshots, and videos will identify
+  either test-infrastructure faults or real application failures.
+- The committed test branch is `test/browser-infra` at
+  `f8a4f3dbc5146ac3739ed9c2895c39331fff5f3e`.
+- The configured GitHub connection can push commits and read Actions runs, logs,
+  and artifacts, but it exposes no workflow-dispatch operation. It therefore
+  could not start the required manual run. To run it, open
+  `https://github.com/jasonatkinson123-sketch/neverending-math/actions/workflows/browser-tests.yml`,
+  choose **Run workflow**, select `test/browser-infra`, and run **Browser tests**.
+  Then record the resulting run URL, jobs, logs, report, traces, screenshots,
+  and videos here.
+- The next production repair is determined only by an executing browser failure;
+  no production behavior changed in this stage.
