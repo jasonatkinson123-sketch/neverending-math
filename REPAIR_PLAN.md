@@ -165,4 +165,65 @@ phone, Chromebook, and desktop sizes.
 | 390 × 844 phone / portrait and landscape | Unverified: the cloud browser API cannot set a viewport. The responsive CSS path is covered structurally but needs a browser capable of fixed viewport emulation. |
 | 1366 × 768 Chromebook | Partially observed only at 1363 × 936; height-specific verification remains outstanding. |
 | 1440 × 900 desktop | Unverified: the cloud browser API cannot resize. |
-| Automated browser keyboard navigation | Unverified: the available browser API has no supported keyboard-input method. |
+| Browser keyboard navigation | **Verified at 1363 × 936 only:** input, Tab, Check, retry, review, and Continue worked; requested device sizes remain unverified. |
+
+## Independent verification — 2026-09-11
+
+**Verdict: FAIL.** The structural repair improves separation at the one available browser size,
+but it does not meet the requested acceptance gate. One concrete readability failure is present,
+and most of the required viewport/fixture matrix remains unavailable rather than verified.
+
+### Diff review
+
+- Production changes are limited to Challenge markup/classification in `app/page.tsx` and
+  Challenge CSS in `app/globals.css`.
+- `app/math-system.ts`, `app/progress.ts`, `app/math-input.ts`, `app/voice-policy.ts`, and
+  `app/collectibles.ts` are unchanged by commit `3948054`.
+- `npm test` passes all 39 tests and `npm run diagnose:30-days` completes with the same 30-session,
+  30-collectible result. The existing LCM secure/not-due diagnostic remains unchanged.
+- The new component tests enumerate representative prompts, but jsdom cannot measure their
+  rendered geometry. They are useful structural checks, not visual acceptance evidence.
+
+### Browser evidence actually obtained
+
+The supervised browser is fixed at **1363 × 936**. A fresh learner was taken through the real
+eight-question Warm-Up and into a normal Daily Challenge without fixture injection or forced
+clicks.
+
+At this viewport:
+
+- an exponent expression (`10³ = ?`) rendered at 70.61 px and remained inside its question row;
+- question, feedback, answer form, and Skip occupied separate non-overlapping vertical bands;
+- input and Check measured 58.88 px high; Skip measured exactly 44 px high;
+- incorrect submission exposed the retry hint without overlap;
+- a second incorrect submission exposed the review explanation without overlap;
+- keyboard-only interaction worked for input → Tab → Check → Enter, retry via Enter, then
+  Tab → Continue → Enter, with focus returning to the next answer input;
+- the Check/Continue label rendered at only **13.68 px**, and Skip at only **12.16 px**. These are
+  below the intended readable control-text minimum, so the available viewport itself fails the
+  comfortable-readability requirement even though the controls are large enough to target.
+
+### Required coverage still missing
+
+| Requested evidence | Status | Reason |
+| --- | --- | --- |
+| Every skill's deterministic representative prompt | **Unverified** | Fixtures are test-only and the production UI exposes no safe fixture-loading seam; the browser's evaluation API is read-only. |
+| Widest expression and longest sentence | **Unverified in browser** | Enumerated only by jsdom tests; no rendered bounds were measured for those exact fixtures. |
+| Prime-factor format instruction | **Unverified in browser** | Verified only as DOM content in jsdom. |
+| 390 × 844 phone, portrait/landscape | **Unverified** | The browser API exposes no viewport resizing or emulation. |
+| 1366 × 768 Chromebook | **Unverified** | The available 1363 × 936 viewport does not exercise the substantially shorter height. |
+| 1440 × 900 desktop | **Unverified** | The browser API exposes no viewport resizing. |
+
+### Reproduction and likely cause
+
+1. Start a fresh session and complete Warm-Up.
+2. Enter Daily Challenge at a desktop-width viewport.
+3. Inspect the computed type size of `.challenge-answer-form button` and `.challenge-skip`.
+4. Observe approximately 13.68 px and 12.16 px respectively at 1363 × 936.
+
+The cause is the container-relative minima in `app/globals.css`:
+`clamp(.8rem,1.55cqw,1.12rem)` for Check/Continue and
+`clamp(.76rem,1.35cqw,.95rem)` for Skip. Their lower bounds permit control text below 14 px.
+The exact cross-viewport fitting gap is additionally caused by the lack of a browser-reachable,
+development-only fixture seam and a fixed-viewport browser runner; current tests cannot establish
+layout bounds at the required sizes.
