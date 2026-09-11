@@ -267,3 +267,72 @@ The interaction is covered through the real React component and persistence func
 automated flow tests; browser verification of the exact requested device matrix remains
 **unverified** and must be completed in an environment that supports fixed viewport emulation and
 a stable longer-running session.
+
+## Independent Collection → Study verification — 2026-09-11
+
+**Verdict: BLOCKED.** The repaired flow passes a real-browser small-collection journey at the
+one available viewport, but this environment cannot establish the required 30-object, early/late,
+phone, Chromebook, and desktop matrix. Component tests are reported separately and are not being
+treated as browser evidence.
+
+### Browser evidence obtained
+
+The supervised browser ran the real application at **1363 × 936**. Starting from its ordinary
+persisted session, the learner journey was completed without fixture injection or force-clicks,
+earning the first object through the normal Results and Reward screens.
+
+For the one-object collection:
+
+- Collection showed exactly `1 FOUND` and only `01 · OLD BRASS SCHOOL BELL`; no future object was
+  exposed.
+- Selecting the Bell exposed `PLACE IN THE STUDY →`. Keyboard Tab moved focus from the selected
+  Bell to that action, and Enter opened the Study with the Bell still selected.
+- Study showed the Bell name, `Found on Day 1`, and the object-specific action
+  `Place OLD BRASS SCHOOL BELL in the Study` together in the placement panel.
+- The action measured **471.63 × 44 px**, rendered at **15.2 px**, and its center hit-test resolved
+  to the action itself. It was activated with Enter, not a forced click.
+- The panel occupied `x 433.5–929.5, y 714.63–842.41`. The return control began at `y 851.77` and
+  Go Home at `y 853.66`, so the panel and navigation did not overlap at this viewport.
+- After placement, the action disappeared and `IN THE STUDY` appeared. After a full page reload,
+  Collection still marked the Bell `IN THE STUDY`; opening `VIEW IN THE STUDY →` showed inspection
+  details with no placement action. This is direct browser evidence for persistence and absence of
+  a duplicate/misleading action in the small-collection case.
+
+### Browser coverage not obtained
+
+| Requested case | Status | Blocking reason |
+| --- | --- | --- |
+| 30 earned objects, early object unplaced | **Unverified in browser** | The production UI has no safe test-state loading seam, and the browser evaluation surface is read-only. Creating 30 daily rewards through ordinary interaction is not a practical fixture mechanism. |
+| 30 earned objects, late object | **Unverified in browser** | Same limitation; no test-only state can be loaded through normal learner controls. |
+| Small collection | **Verified at 1363 × 936** | Normal Day 1 completion, Bell placement, reload, and inspection succeeded. |
+| 390 × 844 phone | **Unverified** | The supervised browser exposes no viewport resizing or emulation. |
+| 1366 × 768 Chromebook | **Unverified** | Available viewport is 1363 × 936; its shorter-height behavior was not exercised. |
+| 1440 × 900 desktop | **Unverified** | The supervised browser exposes no viewport resizing. |
+
+The browser runner also timed out twice while advancing the existing twelve-question challenge;
+the checkpoint survived and the session was eventually completed in shorter ordinary-interaction
+steps. This did not corrupt the Day 1 reward or placement, but it prevents treating the runner as
+a reliable long-sequence fixture mechanism.
+
+### Component-test evidence (not browser evidence)
+
+`tests/product-flows.test.mjs` mounts the production React component and production persistence
+functions. It covers a 20-object collection with an early unplaced Bell and a 30-object collection
+with the late LAMP PULL, including cancel/return, single placement, reload, placed inspection, and
+duplicate prevention. Other component tests confirm all 30 earned IDs appear once in discovery
+order and no unearned IDs are rendered. These checks establish state/DOM behavior, but jsdom does
+not establish viewport geometry, overlap, scrolling reachability, or tap behavior.
+
+### Reproduction required to close the block
+
+In a browser runner that supports preloading an isolated test profile and fixed viewport sizes:
+
+1. Load the existing `earlyUnplacedWithThirty` progress fixture into the isolated profile before
+   application startup.
+2. At 390 × 844, 1366 × 768, and 1440 × 900, open Collection and scroll from the first to the
+   thirtieth earned object using ordinary wheel/touch/keyboard interaction.
+3. Place the early Bell, reload, and inspect it; then repeat with the late LAMP PULL.
+4. Record bounds and center hit-tests for the selected collection item, Collection action, Study
+   panel/action, Return, and Go Home controls, and verify no pair overlaps.
+5. Repeat with the small-collection fixture and an already-placed fixture. PASS requires all three
+   viewport journeys to succeed without forced clicks and without exposing unearned objects.
