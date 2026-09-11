@@ -454,6 +454,14 @@ logs. It has read-only contents permission and no deployment step.
   deliberately unverified locally. The GitHub Actions run is the authoritative
   browser execution. Its report, trace, screenshots, and videos will identify
   either test-infrastructure faults or real application failures.
-- Pending: push the `test/browser-infra` branch, dispatch **Browser tests**, and
-  record the run URL and results. The next production repair is determined only
-  by an executing browser failure; no production behavior changed in this stage.
+- The committed test branch is `test/browser-infra` at
+  `2825b34c262bf218ae9f591f2bc62268265f5cb0`.
+- The configured GitHub connection can push commits and read Actions runs, logs,
+  and artifacts, but it exposes no workflow-dispatch operation. It therefore
+  could not start the required manual run. To run it, open
+  `https://github.com/jasonatkinson123-sketch/neverending-math/actions/workflows/browser-tests.yml`,
+  choose **Run workflow**, select `test/browser-infra`, and run **Browser tests**.
+  Then record the resulting run URL, jobs, logs, report, traces, screenshots,
+  and videos here.
+- The next production repair is determined only by an executing browser failure;
+  no production behavior changed in this stage.
