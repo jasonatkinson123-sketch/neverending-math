@@ -148,7 +148,7 @@ test.describe("Objects Collection and Study browser coverage", () => {
       const enterStudy = page.getByRole("button", { name: /place in the study/i });
       await expectReachable(page, enterStudy, { minHeight: 44 });
       await enterStudy.click();
-      await expect(page.getByLabel("The Study")).toBeVisible();
+      await expect(page.getByRole("region", { name: "The Study", exact: true })).toBeVisible();
       await expect(page.locator(".study-placement-details")).toContainText(label);
       const place = page.getByRole("button", { name: `Place ${label} in the Study` });
       await expectReachable(page, place, { minHeight: 44 });

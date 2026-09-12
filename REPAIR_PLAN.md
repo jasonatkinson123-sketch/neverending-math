@@ -553,3 +553,23 @@ engine requirement. Production dependencies and behavior are unchanged.
 The next action is one manual workflow run after this branch is merged. If browser assertions fail,
 their normal Playwright output and retained artifacts—not elapsed time—will define the next narrowly
 scoped production repair.
+
+## Browser CI run #5 — 2026-09-12
+
+**Commit tested:** `914e7fd46e2b9dd53d2cf2dfe9db7b7777b4b804` (main).
+
+The browser infrastructure executed successfully: fixture preparation and discovery completed,
+the production server started, and all 51 browser cases ran across phone, Chromebook, and desktop
+projects in about one minute. Results were **45 passed, 6 failed**.
+
+All six failures were the early- and late-object placement cases at each of the three viewports.
+They stopped immediately after the normal “Place in the Study” navigation because
+`getByLabel("The Study")` used substring matching. It resolved both the Study region and every
+button with an accessible name such as “Inspect … in the Study” or “Place … in the Study,” causing
+a Playwright strict-mode violation. The screenshots and traces were retained, but the tests did
+not reach the placement click, so this run does not establish a production placement failure.
+
+The test-only correction selects the Study landmark explicitly with
+`getByRole("region", { name: "The Study", exact: true })`. Challenge coverage and the other browser
+flows remain unchanged. A final workflow run is required to let those six placement journeys
+continue past the corrected landmark assertion.
