@@ -611,7 +611,7 @@ them and the scrollable collection.
 | --- | --- |
 | `npm test` | **Passes: 40 tests.** |
 | `npm run diagnose:30-days` | **Passes:** 30 sessions and 30 distinct collectibles; unchanged diagnostic finding for LCM secure/not-due repetition. |
-| Local `npm run test:browser` | Intentionally blocked before discovery: this environment supplies Node 24.19.0, while the repository guard requires Node 22.22.2+ within the Node 22 line because Playwright 1.51.1 hangs under Node 24. |
+| Local browser fixture preparation and discovery | **Passes under an isolated Node 22.22.2 runtime:** 12 challenge fixtures, 30 collectible IDs, and all **51** browser cases are listed. The default local Node 24.19.0 remains correctly blocked by the repository guard. |
 | 390 × 844 real browser | Pending GitHub Actions on the repair branch. The unchanged 51-scenario suite is the acceptance gate. |
 
 The next action is the existing manual browser workflow on this repair branch. Success requires all
