@@ -663,3 +663,110 @@ weaken the test.
 Run the manual browser workflow on the committed session-reliability branch. A passing workflow
 is needed before merge; any browser assertion failure should become the next narrow repair rather
 than being worked around in this stage.
+
+## Study accessibility — 2026-09-12
+
+**Baseline:** `d8ca20a8e2cbe30432d64bd6eebc8d51ac661d57` (current `main`, merged PR #8).
+
+### Reproduced obstruction
+
+The Study rendered every placed object with `study-object-${index % 8}`, although the stylesheet
+only defines eight room positions. The ninth placed object therefore reused the first control’s
+position, letting a later button cover an earlier object. This was a production reachability defect,
+not a data-model problem: `placedIds` contained the correct objects but the room had only eight
+interactive positions.
+
+### Narrow repair
+
+- The original eight room positions remain unchanged and receive only the first eight placed objects.
+- Once more than eight objects are placed, Study adds a compact, scrollable **OBJECTS IN THE STUDY**
+  index. It lists only the placed IDs in discovery order, uses ordinary native buttons, and is part
+  of the existing Study screen rather than a new Collection or reward catalogue.
+- Each index item is at least 44 CSS px high, focusable, scrollable, and selects the existing
+  inspected-object panel. The existing panel still distinguishes a pending placement (its one
+  placement action) from inspection of an already placed object (details and `IN THE STUDY`, no
+  placement action). With no selected object, neither panel nor placement action is rendered.
+- The index uses a bounded panel with an explicit grid shrink point so a 30-object list scrolls
+  within the Study rather than expanding behind navigation or controls.
+
+### Test coverage and current verification
+
+- Test-only browser fixtures now cover 0, 1, 8, 9, and 30 placed objects, as well as the existing
+  early/late unplaced and placed-inspection fixtures.
+- Component coverage opens the real Collection and Study UI, confirms the first eight room controls,
+  verifies the 9/30-object index contains every placed ID in order, inspects every placed object,
+  and confirms inspected placed objects offer no misleading placement action.
+- Playwright adds the same 0/1/8/9/30 coverage at each requested viewport. It measures panel and
+  control bounds, verifies 44 px index targets, checks keyboard focus and activation, uses ordinary
+  clicks for the remaining objects, and asserts the index does not overlap the details panel or
+  Collection return control.
+- `node --test tests/*.test.mjs`: **passes, 47 tests**.
+- `npm run diagnose:30-days`: **passes**, with 30 sessions and 30 distinct collectibles; the
+  pre-existing LCM secure/not-due diagnostic remains unchanged.
+- Browser fixture generation and Playwright discovery: **pass** under Node 22.22.2, listing **72
+  browser scenarios** (24 per viewport).
+- Local `npm run test:browser` reaches the real production server and starts all 72 scenarios, but
+  this workspace has no Playwright Chromium executable. It fails before application interaction for
+  that environmental reason. Real-browser verification at 390 × 844, 1366 × 768, and 1440 × 900 is
+  therefore **pending the existing GitHub Actions workflow**; no browser pass is claimed here.
+
+### Next verification
+
+Run the manual browser workflow on `fix/study-accessibility` after the PR is open. A green run must
+show all 72 scenarios passing. Any geometry, clipping, overlap, or ordinary-click failure from that
+run is the only remaining blocker for this narrow stage.
+
+**Tested production change:** local commit `91c7d0c2d4ec4ce61b5be1f6b495bb4f661cba8e`; the
+matching GitHub production/test commit is `4ddff268cfad62026c42f355c794d5d7acbbba61` on
+[PR #10](https://github.com/jasonatkinson123-sketch/neverending-math/pull/10). The subsequent
+plan-only documentation commit records this handoff and is not browser-tested. The connector can
+read workflow results but cannot dispatch this repository workflow, so browser evidence is pending a
+manual run of [Browser tests](https://github.com/jasonatkinson123-sketch/neverending-math/actions/workflows/browser-tests.yml)
+on branch `fix/study-accessibility`.
+
+## Study accessibility follow-up — 2026-09-12
+
+**Baseline:** `b7d71c572f82a4b08c0b6616196bd780a4a8623a` (PR #10 head evaluated by
+[Actions run 34721082941](https://github.com/jasonatkinson123-sketch/neverending-math/actions/runs/34721082941)).
+
+### Demonstrated failures
+
+- At 390 × 844 with eight placed objects, the selected-object panel intercepted an ordinary click
+  on the Fountain Pen's room control. The room control could not be the sole inspection path for
+  a small collection once details were open.
+- The late Lamp Pull scenario used an unscoped `getByText("IN THE STUDY")`, which matched both
+  the index heading `OBJECTS IN THE STUDY` and the inspected object's placed-state marker. That
+  was an ambiguous test selector, not evidence of a product failure.
+
+### Follow-up repair
+
+- Study now derives `placedObjects` from `collectedIds` filtered by `placedIds`. This preserves
+  discovery order even if objects are placed in a different order.
+- The existing compact, native-button Study index appears whenever two or more objects are placed,
+  rather than only after the eighth room position. It is the stable ordinary click/tap inspection
+  path while the details panel is open; the original room positions remain as visual context.
+- The browser assertion for `IN THE STUDY` is scoped to `.study-placement-details` with exact
+  matching. After placement, the test selects the corresponding stable index control and proves
+  the correct placed details are still shown.
+
+### Coverage and verification
+
+- Fixtures and component coverage now exercise 0, 1, 2, 7, 8, 9, and 30 placed objects. They also
+  cover an out-of-order placement fixture and assert that the index keeps discovery order and
+  excludes unplaced/future objects.
+- Browser coverage now executes the same counts at phone (390 × 844), Chromebook (1366 × 768),
+  and desktop (1440 × 900). It measures 44 px index targets, checks panel/navigation geometry,
+  uses ordinary index clicks, and uses Tab, Shift+Tab, and Enter to inspect objects.
+- `npm test`: **passes, 48 tests**.
+- `npm run diagnose:30-days`: **passes**, unchanged at 30 daily collectibles.
+- Browser fixture preparation and Playwright discovery: **pass** under Node 22.22.2, listing
+  **81 scenarios** (27 per viewport).
+- A targeted local phone browser run starts the production server but cannot launch because this
+  workspace lacks Playwright Chromium (`chromium_headless_shell-1161`). It therefore provides no
+  rendered-browser evidence. The existing GitHub Actions workflow remains required for the full
+  81-scenario verification.
+
+### Remaining verification
+
+Push the follow-up commit to `fix/study-accessibility`, then manually run **Browser tests** on that
+branch. Do not merge PR #10 until the run succeeds against the exact pushed commit.

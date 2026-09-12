@@ -424,3 +424,60 @@ test("rapid Warm-Up answers checkpoint one fact before feedback finishes", async
     clock.restore();
   }
 });
+
+test("Study keeps every placed object inspectable without depending on covered room positions", async () => {
+  for (const count of [0, 1, 2, 7, 8, 9, 30]) {
+    const placedIds = collectibles.slice(0, count).map(([id]) => id);
+    const mounted = await openCollection(collectionProgress(count, placedIds));
+    assert.equal(document.querySelectorAll(".collection-item").length, count);
+    if (count === 0) {
+      assert.equal(document.querySelector(".study-object-index"), null);
+      await act(async () => { mounted.root.unmount(); });
+      continue;
+    }
+
+    const firstName = collectibles[0][1];
+    await click(button(`Inspect ${firstName}`));
+    await click(button("VIEW IN THE STUDY →"));
+    assert.equal(document.querySelectorAll(".study-object").length, Math.min(count, 8));
+    const indexItems = [...document.querySelectorAll("[data-study-index-id]")];
+    assert.equal(indexItems.length, count > 1 ? count : 0);
+
+    const inspectableIds = count > 1
+      ? indexItems.map(item => item.dataset.studyIndexId)
+      : [...document.querySelectorAll(".study-object")].map(item => {
+        const name = item.getAttribute("aria-label").replace(/^Inspect | in the Study$/g, "");
+        return collectibles.find(([, label]) => label === name)?.[0];
+      });
+    assert.deepEqual(inspectableIds, placedIds);
+
+    for (const [id, label] of collectibles.slice(0, count)) {
+      const control = count > 1
+        ? button(`Inspect ${label} from the Study list`)
+        : button(`Inspect ${label} in the Study`);
+      await click(control);
+      assert.match(document.querySelector(".study-placement-details")?.textContent ?? "", new RegExp(label));
+      assert.equal(button(`Place ${label} in the Study`), undefined);
+      assert.ok(parseProgress(stored()).placedIds.includes(id));
+    }
+    await act(async () => { mounted.root.unmount(); });
+  }
+});
+
+test("Study index keeps discovery order when objects were placed out of order", async () => {
+  const placedIds = ["textbook", "pen", "bell"];
+  const mounted = await openCollection(collectionProgress(8, placedIds));
+  await click(button("Inspect OLD BRASS SCHOOL BELL"));
+  await click(button("VIEW IN THE STUDY →"));
+
+  assert.deepEqual(
+    [...document.querySelectorAll("[data-study-index-id]")].map(item => item.dataset.studyIndexId),
+    ["bell", "pen", "textbook"],
+  );
+  assert.equal(button("Inspect BRASS COMPASS from the Study list"), undefined);
+  assert.equal(button("Inspect LAMP PULL from the Study list"), undefined);
+  await click(button("Inspect OLD TEXTBOOK from the Study list"));
+  assert.match(document.querySelector(".study-placement-details")?.textContent ?? "", /OLD TEXTBOOK/);
+  assert.equal(button("Place OLD TEXTBOOK in the Study"), undefined);
+  await act(async () => { mounted.root.unmount(); });
+});

@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const fixtures = JSON.parse(await readFile(resolve(".tmp/browser-fixtures.json"), "utf8"));
+const collectiblesById = fixtures.collectibleLabels;
+
 
 async function seed(page, progress) {
   await page.addInitScript(({ storageKey, value, date }) => {
@@ -226,9 +228,12 @@ test.describe("Objects Collection and Study browser coverage", () => {
       const place = page.getByRole("button", { name: `Place ${label} in the Study` });
       await expectReachable(page, place, { minHeight: 44 });
       await place.click();
-      await expect(page.getByText("IN THE STUDY")).toBeVisible();
+      await expect(page.locator(".study-placement-details").getByText("IN THE STUDY", { exact: true })).toBeVisible();
       await expect(place).toHaveCount(0);
-      await expect(page.locator(`[aria-label="Inspect ${label} in the Study"]`)).toHaveCount(1);
+      const placedInspection = page.getByRole("button", { name: `Inspect ${label} from the Study list` });
+      await expectReachable(page, placedInspection, { minHeight: 44 });
+      await placedInspection.click();
+      await expect(page.locator(".study-placement-details")).toContainText(label);
       const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), fixtures.storageKey);
       expect(saved.placedIds.filter((value) => value === id)).toHaveLength(1);
 
@@ -239,7 +244,7 @@ test.describe("Objects Collection and Study browser coverage", () => {
       await page.getByRole("button", { name: `Inspect ${label}` }).click();
       await page.getByRole("button", { name: /view in the study/i }).click();
       await expect(page.locator(".study-placement-details")).toContainText(label);
-      await expect(page.getByText("IN THE STUDY")).toBeVisible();
+      await expect(page.locator(".study-placement-details").getByText("IN THE STUDY", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: `Place ${label} in the Study` })).toHaveCount(0);
     });
   }
@@ -249,7 +254,83 @@ test.describe("Objects Collection and Study browser coverage", () => {
     await page.getByRole("button", { name: "Inspect OLD BRASS SCHOOL BELL" }).click();
     await page.getByRole("button", { name: /view in the study/i }).click();
     await expect(page.locator(".study-placement-details")).toContainText("OLD BRASS SCHOOL BELL");
-    await expect(page.getByText("IN THE STUDY")).toBeVisible();
+    await expect(page.locator(".study-placement-details").getByText("IN THE STUDY", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /place old brass school bell/i })).toHaveCount(0);
+  });
+
+  for (const [name, fixtureName, count] of [
+    ["no", "studyZero", 0],
+    ["one", "studyOne", 1],
+    ["two", "studyTwo", 2],
+    ["seven", "studySeven", 7],
+    ["eight", "studyEight", 8],
+    ["nine", "studyNine", 9],
+    ["thirty", "studyThirty", 30],
+  ]) {
+    test(`${name} placed objects keep every discovered Study object reachable`, async ({ page }) => {
+      const progress = fixtures.collections[fixtureName];
+      await openCollection(page, progress);
+      if (count === 0) {
+        await expect(page.getByText("THE SHELVES ARE QUIET")).toBeVisible();
+        await expect(page.locator("[data-collectible-id]")).toHaveCount(0);
+        await expect(page.locator(".study-object-index")).toHaveCount(0);
+        return;
+      }
+
+      const firstLabel = "OLD BRASS SCHOOL BELL";
+      await page.getByRole("button", { name: `Inspect ${firstLabel}` }).click();
+      await page.getByRole("button", { name: /view in the study/i }).click();
+      await expect(page.getByRole("region", { name: "The Study", exact: true })).toBeVisible();
+      await expect(page.locator(".study-object")).toHaveCount(Math.min(count, 8));
+
+      const index = page.getByLabel("Objects placed in the Study");
+      const indexItems = page.locator("[data-study-index-id]");
+      if (count <= 1) {
+        await expect(index).toHaveCount(0);
+      } else {
+        const indexBox = await expectReachable(page, index);
+        const panelBox = await expectReachable(page, page.locator(".study-placement-panel"));
+        const collectionBackBox = await bounds(page, page.getByRole("button", { name: "Return to collection" }));
+        expect(overlaps(indexBox, panelBox)).toBeFalsy();
+        expect(overlaps(indexBox, collectionBackBox)).toBeFalsy();
+        await expect(indexItems).toHaveCount(count);
+        expect(await indexItems.evaluateAll((items) => items.map((item) => item.dataset.studyIndexId))).toEqual(fixtures.collectibles.slice(0, count));
+      }
+
+      for (const [position, id] of fixtures.collectibles.slice(0, count).entries()) {
+        const label = collectiblesById[id];
+        const control = count > 1
+          ? page.getByRole("button", { name: `Inspect ${label} from the Study list` })
+          : page.getByRole("button", { name: `Inspect ${label} in the Study` });
+        await control.scrollIntoViewIfNeeded();
+        await expectReachable(page, control, { minHeight: count > 1 ? 44 : 0 });
+        await control.focus();
+        await expect(control).toBeFocused();
+        if (count > 1 && position === 0) {
+          await page.keyboard.press("Shift+Tab");
+          await page.keyboard.press("Tab");
+          await expect(control).toBeFocused();
+        }
+        if (position === 0 || position === count - 1) await page.keyboard.press("Enter");
+        else await control.click();
+        await expect(page.locator(".study-placement-details")).toContainText(label);
+        await expect(page.getByRole("button", { name: `Place ${label} in the Study` })).toHaveCount(0);
+      }
+    });
+  }
+
+  test("Study index follows discovery order, not placement order", async ({ page }) => {
+    await openCollection(page, fixtures.collections.studyOutOfOrder);
+    await page.getByRole("button", { name: "Inspect OLD BRASS SCHOOL BELL" }).click();
+    await page.getByRole("button", { name: /view in the study/i }).click();
+    const indexItems = page.locator("[data-study-index-id]");
+    expect(await indexItems.evaluateAll((items) => items.map((item) => item.dataset.studyIndexId))).toEqual(["bell", "pen", "textbook"]);
+    await expect(page.getByRole("button", { name: "Inspect BRASS COMPASS from the Study list" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Inspect LAMP PULL from the Study list" })).toHaveCount(0);
+    const textbook = page.getByRole("button", { name: "Inspect OLD TEXTBOOK from the Study list" });
+    await expectReachable(page, textbook, { minHeight: 44 });
+    await textbook.click();
+    await expect(page.locator(".study-placement-details")).toContainText("OLD TEXTBOOK");
+    await expect(page.getByRole("button", { name: /place old textbook/i })).toHaveCount(0);
   });
 });
