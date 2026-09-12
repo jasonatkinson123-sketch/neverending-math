@@ -404,13 +404,13 @@ browser assertion as the evidence for the following, narrowly scoped production 
 ### Test-only architecture
 
 - `npm run test:browser` first runs `scripts/prepare-browser-fixtures.mjs`. It
-  loads the existing TypeScript fixture module through Vite SSR and writes only
-  transient JSON to `.tmp/browser-fixtures.json`.
+  loads the existing TypeScript fixture module directly under the pinned Node
+  browser-test runtime and writes only transient JSON to `.tmp/browser-fixtures.json`.
 - Playwright reads that JSON in a fresh browser context for each scenario. An
   init script writes the real production key, `neverending-math-progress-v2`,
   before the application loads and fixes the session date to `2032-06-14`.
-  Reloads retain changes made by the application because the seed runs only at
-  context setup, never on navigation.
+  A per-page `sessionStorage` marker ensures the localStorage seed is written
+  once; reloads retain changes made by the application instead of restoring the fixture.
 - The suite drives the application root and its normal UI. There are no fixture
   routes, learner-visible controls, or changes to production persistence.
 - Chromium projects cover 390×844 phone viewport, 1366×768 Chromebook viewport,
@@ -428,8 +428,8 @@ npm run test:browser
 ```
 
 The manually triggered **Browser tests** workflow is in
-`.github/workflows/browser-tests.yml`. It uses Node 22.13.0, installs Chromium
-on GitHub-hosted Linux, runs the three commands above, and always uploads
+`.github/workflows/browser-tests.yml`. It uses Node 22.22.2, installs Chromium
+on GitHub-hosted Linux, runs the commands above in separately bounded stages, and always uploads
 `playwright-report/`, `test-results/`, generated fixture JSON, and Wrangler
 logs. It has read-only contents permission and no deployment step.
 
@@ -503,3 +503,53 @@ from this run because `npm test` stopped before `npm run diagnose:30-days` and
   workflow's Node 24 runner, eliminating the temporary Vite server and making fixture completion
   observable. Then re-run the workflow; only an executing Playwright result may be treated as
   browser verification.
+
+## Playwright discovery repair — 2026-09-13
+
+**Baseline:** `cf7b3dc7e4cacb83af4f86d3d61e404e8186fe7b` (main after PR #4). The
+working tree was clean; work was performed on `ci/playwright-discovery-repair`.
+
+### Demonstrated cause
+
+The fixture process was not the remaining hang. Run #3 and run #4 both wrote the fixture JSON;
+run #4 additionally printed its completion message before stalling. Local bounded diagnostics
+then isolated Playwright from the application:
+
+- importing `playwright.config.mjs` completed;
+- parsing `.tmp/browser-fixtures.json` completed;
+- a one-line Playwright test with no application imports and no web server was killed after
+  12 seconds under Node 24.19.0 without listing a test;
+- the identical Playwright 1.51.1 command under Node 22.22.2 listed the test normally; and
+- the complete repository configuration under Node 22.22.2 listed all **51 tests** (17 scenarios
+  across phone, Chromebook, and desktop projects) in about six seconds.
+
+The demonstrated incompatibility is Playwright 1.51.1 test discovery under Node 24. The smallest
+repair is to run the browser toolchain on Node 22.22.2, which also satisfies the current jsdom
+engine requirement. Production dependencies and behavior are unchanged.
+
+### Infrastructure changes
+
+- `scripts/check-browser-runtime.mjs` fails immediately with a clear message unless browser tests
+  use Node 22.22.2 or a later Node 22 patch, preventing another silent Node 24 stall.
+- Browser fixture preparation, discovery, and execution are separate npm commands. GitHub Actions
+  applies 60-second hard limits to preparation and discovery and a 10-minute hard limit to browser
+  execution while preserving failure exit codes.
+- Playwright uses a streaming line reporter in CI and pipes application-server output. The browser
+  step enables `pw:webserver` diagnostics; existing HTML reports, screenshots, traces, video,
+  fixture JSON, and Wrangler logs remain artifact inputs.
+- Browser seeding now uses a per-page session marker. A fixture initializes an isolated page once,
+  while reloads preserve placement and other changes made by the real application.
+
+### Verification completed locally
+
+- fixture generation: **passes**, 12 challenge fixtures and 30 collectible IDs;
+- full Playwright discovery: **passes**, 51 tests in one file;
+- production server: **passes**, `http://127.0.0.1:4173/` returned a 4,036-byte HTML response;
+- `npm test`: **passes**, 40 tests;
+- `npm run diagnose:30-days`: **passes**, 30 sessions and 30 distinct collectibles;
+- real browser execution: **not run locally**, because this environment has no Chromium/Chrome
+  executable. GitHub Actions remains the permitted real-browser environment.
+
+The next action is one manual workflow run after this branch is merged. If browser assertions fail,
+their normal Playwright output and retained artifacts—not elapsed time—will define the next narrowly
+scoped production repair.

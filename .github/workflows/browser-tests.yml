@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.15.0
+          node-version: 22.22.2
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -25,8 +25,14 @@ jobs:
         run: npm test
       - name: Thirty-day diagnostic
         run: npm run diagnose:30-days
-      - name: Browser tests
-        run: npm run test:browser
+      - name: Prepare browser fixtures
+        run: timeout --kill-after=5s 60s npm run test:browser:prepare
+      - name: Discover browser tests
+        run: timeout --kill-after=5s 60s npm run test:browser:list
+      - name: Run browser tests
+        env:
+          DEBUG: pw:webserver
+        run: timeout --kill-after=10s 10m npm run test:browser:run
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -38,4 +44,5 @@ jobs:
             playwright-report/
             test-results/
             .tmp/browser-fixtures.json
+            .wrangler/wrangler.log
             .wrangler/logs/

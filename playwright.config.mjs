@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   fullyParallel: false,
   retries: 0,
-  reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
+  reporter: [[process.env.CI ? "line" : "list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: "http://127.0.0.1:4173",
     trace: "retain-on-failure",
@@ -23,5 +23,7 @@ export default defineConfig({
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    stdout: "pipe",
+    stderr: "pipe",
   },
 });

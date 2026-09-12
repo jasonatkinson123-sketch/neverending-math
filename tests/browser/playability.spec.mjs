@@ -6,7 +6,11 @@ const fixtures = JSON.parse(await readFile(resolve(".tmp/browser-fixtures.json")
 
 async function seed(page, progress) {
   await page.addInitScript(({ storageKey, value, date }) => {
-    localStorage.setItem(storageKey, JSON.stringify(value));
+    const seedMarker = `${storageKey}:playwright-seeded`;
+    if (sessionStorage.getItem(seedMarker) !== "true") {
+      localStorage.setItem(storageKey, JSON.stringify(value));
+      sessionStorage.setItem(seedMarker, "true");
+    }
     const NativeDate = Date;
     const fixedTime = new NativeDate(`${date}T12:00:00.000Z`).valueOf();
     // The app uses new Date() for its daily-session key. Fixing it makes resume
