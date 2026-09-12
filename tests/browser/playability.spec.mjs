@@ -146,7 +146,16 @@ test.describe("Objects Collection and Study browser coverage", () => {
       await inspect.scrollIntoViewIfNeeded();
       await inspect.click();
       const enterStudy = page.getByRole("button", { name: /place in the study/i });
-      await expectReachable(page, enterStudy, { minHeight: 44 });
+      const selectionPanel = page.locator(".collection-selection-panel");
+      const selectionPanelBox = await expectReachable(page, selectionPanel);
+      const collectionListBox = await bounds(page, page.locator(".collection-items"));
+      const backBox = await bounds(page, page.getByRole("button", { name: "Return to contents" }));
+      const enterStudyBox = await expectReachable(page, enterStudy, { minHeight: 44 });
+      expect(overlaps(selectionPanelBox, collectionListBox)).toBeFalsy();
+      expect(overlaps(selectionPanelBox, backBox)).toBeFalsy();
+      expect(overlaps(enterStudyBox, await bounds(page, page.locator(".collection-label")))).toBeFalsy();
+      await enterStudy.focus();
+      await expect(enterStudy).toBeFocused();
       await enterStudy.click();
       await expect(page.getByRole("region", { name: "The Study", exact: true })).toBeVisible();
       await expect(page.locator(".study-placement-details")).toContainText(label);
