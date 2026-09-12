@@ -485,3 +485,21 @@ manual workflow. This is test-infrastructure work; it does not change applicatio
 **Current browser-verification status:** not yet executed. No product failures can be inferred
 from this run because `npm test` stopped before `npm run diagnose:30-days` and
 `npm run test:browser`.
+
+
+## Browser CI run #3 — 2026-09-12
+
+**Commit tested:** `131332153d5e1682b85872b5a7b26bcda6d2ad78` (main).
+
+- GitHub Actions successfully completed `npm ci`, Chromium installation, `npm test`,
+  and `npm run diagnose:30-days`.
+- The run was cancelled after roughly 24 minutes during `npm run test:browser`.
+  No Playwright report or test-results directory existed; the artifact contains only the generated
+  fixture JSON.
+- This indicates a browser-harness stall before Playwright provided test results, not a verified
+  application failure. The fixture script created its JSON but used a Vite server solely to import
+  production TypeScript and did not visibly complete in the Action.
+- Next infrastructure repair: import the same production TypeScript modules directly under the
+  workflow's Node 24 runner, eliminating the temporary Vite server and making fixture completion
+  observable. Then re-run the workflow; only an executing Playwright result may be treated as
+  browser verification.
