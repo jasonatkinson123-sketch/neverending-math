@@ -424,3 +424,42 @@ test("rapid Warm-Up answers checkpoint one fact before feedback finishes", async
     clock.restore();
   }
 });
+
+test("Study keeps every placed object inspectable after the room's eight positions are full", async () => {
+  for (const count of [0, 1, 8, 9, 30]) {
+    const placedIds = collectibles.slice(0, count).map(([id]) => id);
+    const mounted = await openCollection(collectionProgress(count, placedIds));
+    assert.equal(document.querySelectorAll(".collection-item").length, count);
+    if (count === 0) {
+      assert.equal(document.querySelector(".study-object-index"), null);
+      await act(async () => { mounted.root.unmount(); });
+      continue;
+    }
+
+    const firstName = collectibles[0][1];
+    await click(button(`Inspect ${firstName}`));
+    await click(button("VIEW IN THE STUDY →"));
+    assert.equal(document.querySelectorAll(".study-object").length, Math.min(count, 8));
+    const indexItems = [...document.querySelectorAll("[data-study-index-id]")];
+    assert.equal(indexItems.length, count > 8 ? count : 0);
+
+    const inspectableIds = count > 8
+      ? indexItems.map(item => item.dataset.studyIndexId)
+      : [...document.querySelectorAll(".study-object")].map(item => {
+        const name = item.getAttribute("aria-label").replace(/^Inspect | in the Study$/g, "");
+        return collectibles.find(([, label]) => label === name)?.[0];
+      });
+    assert.deepEqual(inspectableIds, placedIds);
+
+    for (const [id, label] of collectibles.slice(0, count)) {
+      const control = count > 8
+        ? button(`Inspect ${label} from the Study list`)
+        : button(`Inspect ${label} in the Study`);
+      await click(control);
+      assert.match(document.querySelector(".study-placement-details")?.textContent ?? "", new RegExp(label));
+      assert.equal(button(`Place ${label} in the Study`), undefined);
+      assert.ok(parseProgress(stored()).placedIds.includes(id));
+    }
+    await act(async () => { mounted.root.unmount(); });
+  }
+});
