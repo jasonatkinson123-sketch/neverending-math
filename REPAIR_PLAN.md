@@ -715,3 +715,11 @@ interactive positions.
 Run the manual browser workflow on `fix/study-accessibility` after the PR is open. A green run must
 show all 72 scenarios passing. Any geometry, clipping, overlap, or ordinary-click failure from that
 run is the only remaining blocker for this narrow stage.
+
+**Tested production change:** local commit `91c7d0c2d4ec4ce61b5be1f6b495bb4f661cba8e`; the
+matching GitHub production/test commit is `4ddff268cfad62026c42f355c794d5d7acbbba61` on
+[PR #10](https://github.com/jasonatkinson123-sketch/neverending-math/pull/10). The subsequent
+plan-only documentation commit records this handoff and is not browser-tested. The connector can
+read workflow results but cannot dispatch this repository workflow, so browser evidence is pending a
+manual run of [Browser tests](https://github.com/jasonatkinson123-sketch/neverending-math/actions/workflows/browser-tests.yml)
+on branch `fix/study-accessibility`.
