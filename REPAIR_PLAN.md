@@ -573,3 +573,47 @@ The test-only correction selects the Study landmark explicitly with
 `getByRole("region", { name: "The Study", exact: true })`. Challenge coverage and the other browser
 flows remain unchanged. A final workflow run is required to let those six placement journeys
 continue past the corrected landmark assertion.
+
+## Phone Collection action repair — 2026-09-12
+
+**Baseline:** `8de4fcca60da4bbf16c746abe290a1ef1f8453bb` (main after PR #6).
+
+### Demonstrated browser failure
+
+Browser CI run #6 executed all 51 scenarios: 49 passed and two phone Collection-to-Study cases
+failed before navigation. In both the early Bell and late Lamp Pull fixtures, the visible
+Collection `PLACE IN THE STUDY` button measured **23.390625 CSS px** high at 390 × 844. The
+Playwright target requirement is 44 px. Chromebook and desktop placement flows passed.
+
+The cause was the percentage-only `height:8%` on `.collection-study-button`; the 4:3 art stage is
+only about 292 px high on that portrait viewport. The selected-object label and action were also
+independent percentage-positioned siblings, so increasing the action in isolation would overlap
+them and the scrollable collection.
+
+### Repair
+
+- `app/page.tsx` places the selected-object label and its existing action inside one
+  `.collection-selection-panel`. No selection, placement, persistence, reward, or collection data
+  behavior changed.
+- `app/globals.css` gives that panel a single bounded layout. The visible action is now a native
+  button with `min-height:2.75rem` (44 CSS px) and a 14 px minimum label size; no transparent hit
+  target was added.
+- On phone, the panel is narrowed to clear the Return control and the scrollable list is shortened
+  to reserve non-overlapping room for the full selected-object panel. The collection still scrolls
+  normally and still contains all earned items.
+- `tests/browser/playability.spec.mjs` now asserts that the complete selection panel does not
+  overlap the collection list or Return control, that its action does not overlap the detail label,
+  and that the action receives keyboard focus before an ordinary click.
+
+### Verification
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | **Passes: 40 tests.** |
+| `npm run diagnose:30-days` | **Passes:** 30 sessions and 30 distinct collectibles; unchanged diagnostic finding for LCM secure/not-due repetition. |
+| Local `npm run test:browser` | Intentionally blocked before discovery: this environment supplies Node 24.19.0, while the repository guard requires Node 22.22.2+ within the Node 22 line because Playwright 1.51.1 hangs under Node 24. |
+| 390 × 844 real browser | Pending GitHub Actions on the repair branch. The unchanged 51-scenario suite is the acceptance gate. |
+
+The next action is the existing manual browser workflow on this repair branch. Success requires all
+51 browser scenarios to pass; a failing application assertion remains evidence, not a reason to
+weaken the test.
