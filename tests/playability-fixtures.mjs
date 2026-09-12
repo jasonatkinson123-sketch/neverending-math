@@ -28,5 +28,5 @@ export function fixtureProgress({ skill = "commonDenominators", collected = 0, p
 export const placementFixtures = {
   earlyUnplacedWithThirty: { collected: 30, placed: ["pen", "compass"] },
   alreadyPlacedBell: { collected: 30, placed: ["bell"] },
-  studyCounts: [0, 1, 8, 9, 30],
+  studyCounts: [0, 1, 2, 7, 8, 9, 30],
 };
