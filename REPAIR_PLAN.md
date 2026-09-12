@@ -663,3 +663,41 @@ weaken the test.
 Run the manual browser workflow on the committed session-reliability branch. A passing workflow
 is needed before merge; any browser assertion failure should become the next narrow repair rather
 than being worked around in this stage.
+
+
+### Independent verification
+
+**Verdict: PASS.**
+
+PR #8 head commit `73891e8f465178a432b1d0e9d24d8f9121e71952` was reviewed against baseline
+`c68e5213e3bcb97a9d8437691d36187d51379231`. The PR had already been merged as
+`d8ca20a8e2cbe30432d64bd6eebc8d51ac661d57` before this independent review.
+
+Manual Browser tests run
+[`34717565964`](https://github.com/jasonatkinson123-sketch/neverending-math/actions/runs/34717565964)
+checked out the exact PR head SHA and completed successfully:
+
+- `npm test`: 46 passed, 0 failed, 0 skipped;
+- `npm run diagnose:30-days`: 30 daily sessions and 30 distinct collectibles;
+- Playwright: 57 passed in 1.1 minutes across 390 × 844 phone Chromium,
+  1366 × 768 Chromebook Chromium, and 1440 × 900 desktop Chromium;
+- browser evidence artifact:
+  [`browser-evidence-34717565964`](https://github.com/jasonatkinson123-sketch/neverending-math/actions/runs/34717565964/artifacts/10305165991).
+
+Diff review confirmed that answer state no longer depends on feedback text; checkpoints preserve
+retry/review attempts and accepted outcomes; synchronous interaction locking prevents duplicate
+answer transitions; transition timers are scoped to screen/session identity and cancelled on
+navigation or unmount; and superseded or complete sessions reject stale checkpoint/completion
+writes. Existing stored questions remain session-owned, and legacy checkpoints without the new
+optional fields normalize to an answer-ready state.
+
+The production diff does not change CSS/artwork, question generation, skill selection/adaptation,
+Settings selection, collectible definitions, or Collection/Study layout. The 30-day diagnostic
+retains the existing LCM secure/not-due tuning notice.
+
+Remaining evidence limits: the phone project is Chromium viewport coverage rather than physical
+iPhone Safari or a real soft keyboard. CI does not provide real Web Speech recognition, so the
+Warm-Up voice/typing race is supported by shared-lock source review and typed component coverage,
+not live microphone evidence. Rapid Enter/Continue have direct Playwright cases; rapid Check and
+Warm-Up have component cases; repeated Skip is protected by the same explicit state/lock path but
+does not have its own dedicated rapid-activation browser case.
