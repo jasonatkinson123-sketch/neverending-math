@@ -2,6 +2,7 @@ import { collectibles } from "./collectibles.ts";
 import { hash, makeQuestion, seededRandom, skillIds, warmupFor, type Question, type SkillId } from "./math-system.ts";
 
 export type Outcome = "first" | "retry" | "reviewed";
+export type AnswerState = "answering" | "retry" | "review";
 export type MasteryEntry = {
   seen: number; first: number; retry: number; reviewed: number;
   successful: number; recentErrors: number; confidence: number;
@@ -10,7 +11,8 @@ export type MasteryEntry = {
 };
 export type Mastery = Record<SkillId, MasteryEntry>;
 export type JourneyPhase = "warmupIntro" | "warmup" | "warmupComplete" | "challengeIntro" | "challenge" | "results";
-export type Session = { id: string; dateKey: string; serial: number; eligibleSkills: SkillId[]; questions: Question[]; warmups: Question[]; complete: boolean; extra?: boolean; superseded?: boolean; rewardId?: string; checkpoint?: { phase: JourneyPhase; warmIndex: number; questionIndex: number; outcomes: Outcome[] } };
+export type JourneyCheckpoint = { phase: JourneyPhase; warmIndex: number; questionIndex: number; outcomes: Outcome[]; attempts?: number; answerState?: AnswerState };
+export type Session = { id: string; dateKey: string; serial: number; eligibleSkills: SkillId[]; questions: Question[]; warmups: Question[]; complete: boolean; extra?: boolean; superseded?: boolean; rewardId?: string; checkpoint?: JourneyCheckpoint };
 export type Progress = { version: 4; sound: boolean; voice: boolean; activeSkills: SkillId[]; sessions: Session[]; mastery: Mastery; collectedIds: string[]; placedIds: string[] };
 
 const blankEntry = (): MasteryEntry => ({ seen: 0, first: 0, retry: 0, reviewed: 0, successful: 0, recentErrors: 0, confidence: .35, lastSeen: null, intervalDays: 1, nextDue: null, recent: [] });
@@ -86,7 +88,7 @@ export function createSession(progress: Progress, date: string, serial: number, 
   const eligibleSkills = [...progress.activeSkills];
   const skills = chooseSkills(progress.mastery, date, serial, eligibleSkills);
   const warmups = warmupFor(date, serial, eligibleSkills);
-  return { id: `${date}-${serial}`, dateKey: date, serial, eligibleSkills, warmups, questions: skills.map((skill, index) => makeQuestion(skill, random, index)), complete: false, extra, checkpoint: { phase: warmups.length ? "warmupIntro" : "challengeIntro", warmIndex: 0, questionIndex: 0, outcomes: [] } };
+  return { id: `${date}-${serial}`, dateKey: date, serial, eligibleSkills, warmups, questions: skills.map((skill, index) => makeQuestion(skill, random, index)), complete: false, extra, checkpoint: { phase: warmups.length ? "warmupIntro" : "challengeIntro", warmIndex: 0, questionIndex: 0, outcomes: [], attempts: 0, answerState: "answering" } };
 }
 
 export function sessionIsCompatible(session: Session, activeSkills: SkillId[]) {
@@ -135,14 +137,16 @@ export function startSession(progress: Progress, today = dateKey(), extra = fals
 }
 export function completeSession(progress: Progress, id: string, outcomes: Outcome[]) {
   const session = progress.sessions.find((item) => item.id === id); if (!session) return progress;
-  if (session.complete) return progress;
+  if (session.complete || session.superseded) return progress;
   const alreadyRewardedToday = progress.sessions.some(item => item.id !== id && item.dateKey === session.dateKey && item.complete && item.rewardId);
   const rewardId = session.extra || alreadyRewardedToday ? undefined : collectibles[progress.collectedIds.length % collectibles.length][0];
   const sessions = progress.sessions.map((item) => item.id === id ? { ...item, complete: true, rewardId } : item);
   return { ...progress, sessions, mastery: updateMastery(progress.mastery, session.questions, outcomes, session.dateKey), collectedIds: rewardId && !progress.collectedIds.includes(rewardId) ? [...progress.collectedIds, rewardId] : progress.collectedIds };
 }
-export function checkpointSession(progress: Progress, id: string, checkpoint: NonNullable<Session["checkpoint"]>) {
-  return { ...progress, sessions: progress.sessions.map(item => item.id === id ? { ...item, checkpoint } : item) };
+export function checkpointSession(progress: Progress, id: string, checkpoint: JourneyCheckpoint) {
+  const answerState: AnswerState = checkpoint.answerState === "retry" || checkpoint.answerState === "review" ? checkpoint.answerState : "answering";
+  const normalized = { ...checkpoint, attempts: Math.max(0, Math.min(2, checkpoint.attempts ?? (answerState === "retry" ? 1 : answerState === "review" ? 2 : 0))), answerState };
+  return { ...progress, sessions: progress.sessions.map(item => item.id === id && !item.complete && !item.superseded ? { ...item, checkpoint: normalized } : item) };
 }
 export function parseProgress(raw: string | null): Progress {
   if (!raw) return blankProgress(); try {
@@ -156,7 +160,9 @@ export function parseProgress(raw: string | null): Progress {
         const eligibleSkills = Array.isArray(session.eligibleSkills) ? session.eligibleSkills.filter((skill: SkillId) => skillIds.includes(skill)) : [...normalizedSkills];
         const warmups = Array.isArray(session.warmups) && session.warmups.length ? session.warmups : warmupFor(session.dateKey, session.serial, eligibleSkills);
         const phase = !warmups.length && session.checkpoint && ["warmupIntro", "warmup", "warmupComplete"].includes(session.checkpoint.phase) ? "challengeIntro" : session.checkpoint?.phase;
-        return { ...session, eligibleSkills, warmups, checkpoint: session.checkpoint ? { ...session.checkpoint, phase } : session.checkpoint };
+        const answerState: AnswerState = session.checkpoint?.answerState === "retry" || session.checkpoint?.answerState === "review" ? session.checkpoint.answerState : "answering";
+        const attempts = Math.max(0, Math.min(2, session.checkpoint?.attempts ?? (answerState === "retry" ? 1 : answerState === "review" ? 2 : 0)));
+        return { ...session, eligibleSkills, warmups, checkpoint: session.checkpoint ? { ...session.checkpoint, phase, attempts, answerState } : session.checkpoint };
       }) : [];
       return { ...blank, ...value, version: 4, activeSkills: normalizedSkills, mastery, sessions };
     }

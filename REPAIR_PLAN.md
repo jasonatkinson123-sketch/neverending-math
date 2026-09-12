@@ -617,3 +617,49 @@ them and the scrollable collection.
 The next action is the existing manual browser workflow on this repair branch. Success requires all
 51 browser scenarios to pass; a failing application assertion remains evidence, not a reason to
 weaken the test.
+
+## Session reliability — 2026-09-12
+
+**Baseline:** `c68e5213e3bcb97a9d8437691d36187d51379231` (main after PR #7).
+
+### Demonstrated risks repaired
+
+- Answer flow previously inferred control state from feedback text and deferred the only stored
+  checkpoint until the feedback timer finished. Repeated input could therefore queue more than
+  one transition, and a reload during the delay could lose a correct outcome.
+- Retry and review state were UI-only. Reloading could return a learner to an answer-ready prompt
+  even after a retry or review had begun.
+- Timers were unowned raw callbacks. They could remain live after navigation or unmount.
+
+### Repair and checkpoint compatibility
+
+- Sessions now persist `answerState` (`answering`, `retry`, or `review`) and `attempts` in their
+  existing checkpoint. An accepted answer stores the next question/fact before its short visual
+  feedback delay. Older checkpoints without these fields load as `answering` with zero attempts.
+- A small synchronous interaction lock permits one answer, Continue, or Skip transition at a
+  time. Warm-Up voice and typed submissions share that lock; voice cannot auto-continue a review.
+- Transition callbacks carry the current screen and session identity. Navigation, replacement,
+  and unmount cancel them. Checkpointing and completion also refuse superseded or complete
+  sessions, so an obsolete session cannot overwrite newer progress or earn an object.
+
+### Tests and verification
+
+- Component/production-state regression coverage proves a single outcome for rapid Challenge and
+  Warm-Up submissions, retry and review reload restoration, one Continue result, cancelled stale
+  callbacks, legacy checkpoint parsing, superseded-session protection, and idempotent completion.
+- Playwright coverage adds accepted-answer reload/resume and retry/review/repeated-Continue flows
+  to each existing phone (390 × 844), Chromebook (1366 × 768), and desktop (1440 × 900) project.
+  The tests use ordinary keyboard interaction and inspect saved production localStorage state.
+- `npm test`: **passes, 46 tests**.
+- `npm run diagnose:30-days`: **passes**, retaining 30 sessions, 30 distinct collectibles, and its
+  pre-existing LCM secure/not-due tuning finding.
+- Production server: **passes**, responding HTTP 200 on `127.0.0.1:4173`.
+- Browser fixture generation and Node 22.22.2 discovery: **pass**, 12 skill fixtures, 30 object
+  IDs, and **57 Playwright tests**. This workspace has no Chromium executable; actual browser
+  execution remains pending the existing GitHub Actions workflow on the repair branch.
+
+### Next stage
+
+Run the manual browser workflow on the committed session-reliability branch. A passing workflow
+is needed before merge; any browser assertion failure should become the next narrow repair rather
+than being worked around in this stage.
