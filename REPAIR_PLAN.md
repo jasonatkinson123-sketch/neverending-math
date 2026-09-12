@@ -465,3 +465,23 @@ logs. It has read-only contents permission and no deployment step.
   and videos here.
 - The next production repair is determined only by an executing browser failure;
   no production behavior changed in this stage.
+
+
+## Browser CI run #2 — 2026-09-12
+
+**Commit tested:** `429cceebd39883fee5da284a148d14b82fd8570b` (main).
+
+The GitHub-hosted runner successfully checked out the repository, installed dependencies,
+and installed Playwright Chromium. It failed before the diagnostic or browser suite began.
+
+**Cause:** the workflow pinned Node `22.13.0`. The current Node test suite imports
+production `.ts` modules directly; Node 22.13 rejects those imports with
+`ERR_UNKNOWN_FILE_EXTENSION`. The declared `jsdom@30.0.1` development dependency
+also requires Node `^22.22.2 || ^24.15.0 || >=26`.
+
+**Resolution pending:** update only the browser workflow to Node 24.15.0, then re-run the
+manual workflow. This is test-infrastructure work; it does not change application behavior.
+
+**Current browser-verification status:** not yet executed. No product failures can be inferred
+from this run because `npm test` stopped before `npm run diagnose:30-days` and
+`npm run test:browser`.
