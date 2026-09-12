@@ -141,7 +141,7 @@ export function runThirtyDaySimulation() {
     });
 
     if (day === 7) {
-      const checkpoint = { phase: "challenge", warmIndex: started.session.warmups.length, questionIndex: 4, outcomes: sessionOutcomes.slice(0, 4) };
+      const checkpoint = { phase: "challenge", warmIndex: started.session.warmups.length, questionIndex: 4, outcomes: sessionOutcomes.slice(0, 4), attempts: 0, answerState: "answering" };
       progress = checkpointSession(progress, started.session.id, checkpoint);
       const storedQuestions = structuredClone(started.session.questions);
       const restored = parseProgress(JSON.stringify(progress));

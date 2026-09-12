@@ -35,6 +35,23 @@ async function openChallenge(page, fixture) {
   await expect(page.locator(".challenge-layout")).toBeVisible();
 }
 
+async function resumeChallenge(page) {
+  await page.reload();
+  await page.getByRole("button", { name: "Enter Neverending Math" }).click();
+  await page.getByRole("button", { name: "Begin today’s mathematics" }).click();
+  await expect(page.locator(".challenge-layout")).toBeVisible();
+}
+
+function answerFor(question) {
+  return Array.isArray(question.answer)
+    ? question.input === "factors" ? question.answer.join(" × ") : String(question.answer[0])
+    : String(question.answer);
+}
+
+async function checkpoint(page) {
+  return page.evaluate((key) => JSON.parse(localStorage.getItem(key)).sessions.at(-1).checkpoint, fixtures.storageKey);
+}
+
 async function openCollection(page, progress) {
   await open(page, progress);
   await page.getByRole("button", { name: "Open objects collection" }).click();
@@ -113,6 +130,53 @@ test.describe("Challenge browser coverage", () => {
     await expectReachable(page, continueButton, { minHeight: 44 });
     await expect(input).toBeDisabled();
     await continueButton.press("Enter");
+  });
+
+  test("rapid Enter submits one accepted answer and resumes the stored next question", async ({ page }) => {
+    const fixture = fixtures.challenges.multiplication;
+    await openChallenge(page, fixture);
+    const input = page.getByLabel("YOUR ANSWER");
+    await input.fill(answerFor(fixture.question));
+    await input.press("Enter");
+    await page.keyboard.press("Enter");
+    await expect.poll(async () => (await checkpoint(page)).outcomes).toEqual(["first"]);
+    const saved = await checkpoint(page);
+    expect(saved.questionIndex).toBe(1);
+    expect(saved.answerState).toBe("answering");
+
+    await resumeChallenge(page);
+    await expect(page.getByText("QUESTION 2 OF 12")).toBeVisible();
+    await expect.poll(async () => (await checkpoint(page)).outcomes).toEqual(["first"]);
+  });
+
+  test("retry and review checkpoints survive reload and repeated Continue advances once", async ({ page }) => {
+    const fixture = fixtures.challenges.primeFactors;
+    await openChallenge(page, fixture);
+    const input = page.getByLabel("YOUR ANSWER");
+    await input.fill("999");
+    await input.press("Enter");
+    await expect(page.getByText("NOT QUITE — TRY ONCE MORE")).toBeVisible();
+    await expect.poll(async () => (await checkpoint(page)).answerState).toBe("retry");
+    expect((await checkpoint(page)).attempts).toBe(1);
+
+    await resumeChallenge(page);
+    await expect(page.getByText("NOT QUITE — TRY ONCE MORE")).toBeVisible();
+    await expect(input).toBeEnabled();
+    await input.fill("999");
+    await input.press("Enter");
+    await expect(page.getByText("LET’S REVIEW IT")).toBeVisible();
+    await expect(input).toBeDisabled();
+    await expect.poll(async () => (await checkpoint(page)).answerState).toBe("review");
+    expect((await checkpoint(page)).attempts).toBe(2);
+
+    await resumeChallenge(page);
+    const continueButton = page.getByRole("button", { name: "CONTINUE →" });
+    await expectReachable(page, continueButton, { minHeight: 44 });
+    await continueButton.press("Enter");
+    await page.keyboard.press("Enter");
+    await expect.poll(async () => (await checkpoint(page)).outcomes).toEqual(["reviewed"]);
+    expect((await checkpoint(page)).questionIndex).toBe(1);
+    await expect(page.getByText("QUESTION 2 OF 12")).toBeVisible();
   });
 });
 

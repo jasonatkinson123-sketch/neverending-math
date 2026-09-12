@@ -204,6 +204,32 @@ test("persistence retains mastery and a precise interruption checkpoint", () => 
   assert.deepEqual(resumed.session.questions, started.session.questions);
 });
 
+test("legacy checkpoints load as an answer-ready session and new checkpoints retain retry state", () => {
+  const started = startSession(blankProgress(), "2026-09-19");
+  const legacy = {
+    ...started.progress,
+    sessions: started.progress.sessions.map((session) => session.id === started.session.id ? {
+      ...session,
+      checkpoint: { phase: "challenge", warmIndex: 8, questionIndex: 2, outcomes: ["first", "retry"] },
+    } : session),
+  };
+  const restoredLegacy = parseProgress(JSON.stringify(legacy));
+  assert.deepEqual(restoredLegacy.sessions[0].checkpoint, { phase: "challenge", warmIndex: 8, questionIndex: 2, outcomes: ["first", "retry"], attempts: 0, answerState: "answering" });
+
+  const retry = checkpointSession(started.progress, started.session.id, { phase: "challenge", warmIndex: 8, questionIndex: 2, outcomes: ["first", "retry"], attempts: 1, answerState: "retry" });
+  assert.deepEqual(parseProgress(JSON.stringify(retry)).sessions[0].checkpoint, retry.sessions[0].checkpoint);
+});
+
+test("obsolete sessions cannot checkpoint, complete, or earn a reward", () => {
+  const started = startSession(blankProgress(), "2026-09-20");
+  const disabled = started.session.questions[0].skill;
+  const changed = setSkillEnabled(started.progress, disabled, false);
+  const replacement = startSession(changed, "2026-09-20");
+  const staleCheckpoint = checkpointSession(replacement.progress, started.session.id, { phase: "results", warmIndex: 8, questionIndex: 11, outcomes: started.session.questions.map(() => "first") });
+  assert.deepEqual(staleCheckpoint, replacement.progress);
+  assert.deepEqual(completeSession(staleCheckpoint, started.session.id, started.session.questions.map(() => "first")), staleCheckpoint);
+});
+
 test("disabled-skill mastery is untouched by an enabled-only session", () => {
   let progress = blankProgress();
   progress = setSkillEnabled(progress, "squareRoots", false);

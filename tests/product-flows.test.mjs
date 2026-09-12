@@ -61,6 +61,41 @@ async function click(element) {
   await act(async () => { element.click(); });
 }
 
+async function fill(input, value) {
+  assert.ok(input, "expected an answer input");
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  await act(async () => {
+    input.focus();
+    setValue.call(input, value);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+}
+
+function fakeTimers() {
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const pending = new Map();
+  let nextId = 1;
+  globalThis.setTimeout = (callback) => {
+    const id = nextId++;
+    pending.set(id, callback);
+    return id;
+  };
+  globalThis.clearTimeout = (id) => pending.delete(id);
+  return {
+    async runAll() {
+      const callbacks = [...pending.values()];
+      pending.clear();
+      await act(async () => { callbacks.forEach(callback => callback()); });
+    },
+    restore() {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+    },
+  };
+}
+
 const button = (name) => document.querySelector(`button[aria-label="${name}"]`) ?? [...document.querySelectorAll("button")].find((item) => item.textContent.trim() === name);
 const checkbox = (name) => [...document.querySelectorAll("label")].find((label) => label.textContent.trim() === name)?.querySelector("input[type=checkbox]");
 const stored = () => window.localStorage.getItem(storageKey);
@@ -79,6 +114,17 @@ async function openCollection(savedProgress) {
 
 function collectionProgress(count, placedIds = []) {
   return JSON.stringify({ ...blankProgress(), collectedIds: collectibles.slice(0, count).map(([id]) => id), placedIds });
+}
+
+async function openChallenge(savedProgress) {
+  const mounted = await renderApp(savedProgress);
+  await click(button("Enter Neverending Math"));
+  await click(button("Begin today’s mathematics"));
+  return mounted;
+}
+
+function answerFor(question) {
+  return Array.isArray(question.answer) ? question.input === "factors" ? question.answer.join(" × ") : String(question.answer[0]) : String(question.answer);
 }
 
 test("Settings selection persists through navigation and reload and controls sessions", async () => {
@@ -265,4 +311,116 @@ test("an interrupted session resumes its stored content and checkpoint", async (
   assert.deepEqual(resumed.warmups, original.warmups);
   assert.deepEqual(resumed.questions, original.questions);
   await act(async () => { mounted.root.unmount(); });
+});
+
+test("rapid Challenge submissions commit one answer and resume at the next stored question", async () => {
+  const progress = fixtureProgress({ skill: "multiplication" });
+  const question = progress.sessions[0].questions[0];
+  const clock = fakeTimers();
+  let mounted;
+  try {
+    mounted = await openChallenge(JSON.stringify(progress));
+    await fill(document.querySelector("#main-answer"), answerFor(question));
+    const check = button("CHECK ANSWER →");
+    await act(async () => { check.click(); check.click(); });
+    const checkpointed = parseProgress(stored()).sessions[0].checkpoint;
+    assert.deepEqual(checkpointed.outcomes, ["first"]);
+    assert.equal(checkpointed.questionIndex, 1);
+    assert.equal(checkpointed.answerState, "answering");
+
+    await act(async () => { mounted.root.unmount(); });
+    mounted = await openChallenge(stored());
+    assert.match(document.body.textContent, /QUESTION 2 OF 12/);
+    assert.deepEqual(parseProgress(stored()).sessions[0].checkpoint.outcomes, ["first"]);
+
+    await clock.runAll();
+    assert.match(document.body.textContent, /QUESTION 2 OF 12/);
+  } finally {
+    if (mounted) await act(async () => { mounted.root.unmount(); });
+    clock.restore();
+  }
+});
+
+test("a delayed answer transition cannot mutate a replacement screen after unmount", async () => {
+  const progress = fixtureProgress({ skill: "multiplication" });
+  const clock = fakeTimers();
+  let mounted;
+  try {
+    mounted = await openChallenge(JSON.stringify(progress));
+    await fill(document.querySelector("#main-answer"), answerFor(progress.sessions[0].questions[0]));
+    await click(button("CHECK ANSWER →"));
+    await act(async () => { mounted.root.unmount(); });
+
+    mounted = await renderApp(JSON.stringify(blankProgress()));
+    await click(button("Enter Neverending Math"));
+    assert.ok(button("Begin today’s mathematics"));
+    await clock.runAll();
+    assert.ok(button("Begin today’s mathematics"));
+    assert.equal(parseProgress(stored()).sessions.length, 0);
+  } finally {
+    if (mounted) await act(async () => { mounted.root.unmount(); });
+    clock.restore();
+  }
+});
+
+test("retry and review states survive reload and a repeated Continue records one reviewed outcome", async () => {
+  const clock = fakeTimers();
+  let mounted;
+  try {
+    mounted = await openChallenge(JSON.stringify(fixtureProgress({ skill: "primeFactors" })));
+    await fill(document.querySelector("#main-answer"), "999");
+    await click(button("CHECK ANSWER →"));
+    let saved = parseProgress(stored()).sessions[0].checkpoint;
+    assert.equal(saved.answerState, "retry");
+    assert.equal(saved.attempts, 1);
+
+    await act(async () => { mounted.root.unmount(); });
+    mounted = await openChallenge(stored());
+    assert.match(document.body.textContent, /NOT QUITE — TRY ONCE MORE/);
+    assert.equal(document.querySelector("#main-answer").disabled, false);
+    await fill(document.querySelector("#main-answer"), "999");
+    await click(button("CHECK ANSWER →"));
+    saved = parseProgress(stored()).sessions[0].checkpoint;
+    assert.equal(saved.answerState, "review");
+    assert.equal(saved.attempts, 2);
+
+    await act(async () => { mounted.root.unmount(); });
+    mounted = await openChallenge(stored());
+    assert.match(document.body.textContent, /LET’S REVIEW IT/);
+    assert.equal(document.querySelector("#main-answer").disabled, true);
+    const continueButton = button("CONTINUE →");
+    await act(async () => { continueButton.click(); continueButton.click(); });
+    saved = parseProgress(stored()).sessions[0].checkpoint;
+    assert.deepEqual(saved.outcomes, ["reviewed"]);
+    assert.equal(saved.questionIndex, 1);
+    await clock.runAll();
+    assert.match(document.body.textContent, /QUESTION 2 OF 12/);
+  } finally {
+    if (mounted) await act(async () => { mounted.root.unmount(); });
+    clock.restore();
+  }
+});
+
+test("rapid Warm-Up answers checkpoint one fact before feedback finishes", async () => {
+  const clock = fakeTimers();
+  let mounted;
+  try {
+    mounted = await renderApp();
+    await click(button("Enter Neverending Math"));
+    await click(button("Begin today’s mathematics"));
+    await click(button("BEGIN →"));
+    const progress = parseProgress(stored());
+    const warmup = progress.sessions[0].warmups[0];
+    await fill(document.querySelector('input[aria-label="Warm-up answer"]'), answerFor(warmup));
+    const check = button("CHECK →");
+    await act(async () => { check.click(); check.click(); });
+    const checkpointed = parseProgress(stored()).sessions[0].checkpoint;
+    assert.equal(checkpointed.warmIndex, 1);
+    assert.equal(checkpointed.answerState, "answering");
+    await clock.runAll();
+    assert.match(document.body.textContent, /2 OF 8/);
+  } finally {
+    if (mounted) await act(async () => { mounted.root.unmount(); });
+    clock.restore();
+  }
 });
