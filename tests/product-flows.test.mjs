@@ -425,6 +425,34 @@ test("rapid Warm-Up answers checkpoint one fact before feedback finishes", async
   }
 });
 
+test("the final Warm-Up transition leaves the first Challenge answer ready", async () => {
+  const clock = fakeTimers();
+  let mounted;
+  try {
+    mounted = await renderApp();
+    await click(button("Enter Neverending Math"));
+    await click(button("Begin today’s mathematics"));
+    await click(button("BEGIN →"));
+
+    const session = parseProgress(stored()).sessions.at(-1);
+    for (const question of session.warmups) {
+      await fill(document.querySelector('input[aria-label="Warm-up answer"]'), answerFor(question));
+      await click(button("CHECK →"));
+      await clock.runAll();
+    }
+
+    assert.ok(document.querySelector("h1")?.textContent.includes("WARM-UP COMPLETE"));
+    await click(button("CONTINUE →"));
+    await click(button("BEGIN →"));
+    const challengeInput = document.querySelector("#main-answer");
+    assert.ok(challengeInput, "the Challenge input should be present after the Warm-Up");
+    assert.equal(challengeInput.disabled, false, "the first Challenge answer must be ready after the final Warm-Up transition");
+  } finally {
+    if (mounted) await act(async () => { mounted.root.unmount(); });
+    clock.restore();
+  }
+});
+
 test("Study keeps every placed object inspectable without depending on covered room positions", async () => {
   for (const count of [0, 1, 2, 7, 8, 9, 30]) {
     const placedIds = collectibles.slice(0, count).map(([id]) => id);
