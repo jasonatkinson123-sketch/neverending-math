@@ -9,12 +9,15 @@ const collectiblesById = fixtures.collectibleLabels;
 async function seed(page, progress) {
   await page.addInitScript(({ storageKey, value, date }) => {
     const seedMarker = `${storageKey}:playwright-seeded`;
+    const dateMarker = `${storageKey}:playwright-date`;
     if (sessionStorage.getItem(seedMarker) !== "true") {
       localStorage.setItem(storageKey, JSON.stringify(value));
       sessionStorage.setItem(seedMarker, "true");
     }
+    if (!sessionStorage.getItem(dateMarker)) sessionStorage.setItem(dateMarker, date);
     const NativeDate = Date;
-    const fixedTime = new NativeDate(`${date}T12:00:00.000Z`).valueOf();
+    const activeDate = sessionStorage.getItem(dateMarker) ?? date;
+    const fixedTime = new NativeDate(`${activeDate}T12:00:00.000Z`).valueOf();
     // The app uses new Date() for its daily-session key. Fixing it makes resume
     // fixtures deterministic while leaving production code untouched.
     // eslint-disable-next-line no-global-assign
@@ -52,6 +55,52 @@ function answerFor(question) {
 
 async function checkpoint(page) {
   return page.evaluate((key) => JSON.parse(localStorage.getItem(key)).sessions.at(-1).checkpoint, fixtures.storageKey);
+}
+
+async function savedProgress(page) {
+  return page.evaluate((key) => JSON.parse(localStorage.getItem(key)), fixtures.storageKey);
+}
+
+async function completeWarmupAndEnterChallenge(page) {
+  await expect(page.getByText("EIGHT QUICK FACTS.")).toBeVisible();
+  await page.getByRole("button", { name: "BEGIN →", exact: true }).click();
+  const session = (await savedProgress(page)).sessions.at(-1);
+  for (const [index, question] of session.warmups.entries()) {
+    await expect(page.getByText(`${index + 1} OF ${session.warmups.length}`, { exact: true })).toBeVisible();
+    const input = page.getByLabel("Warm-up answer");
+    await input.fill(answerFor(question));
+    await input.press("Enter");
+  }
+  await expect(page.getByRole("heading", { name: "WARM-UP COMPLETE" })).toBeVisible();
+  await page.getByRole("button", { name: "CONTINUE →", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "DAILY CHALLENGE" })).toBeVisible();
+  await page.getByRole("button", { name: "BEGIN →", exact: true }).click();
+}
+
+async function completeChallenge(page, { mixedOutcomes = false } = {}) {
+  const session = (await savedProgress(page)).sessions.at(-1);
+  for (const [index, question] of session.questions.entries()) {
+    await expect(page.getByText(`QUESTION ${index + 1} OF ${session.questions.length}`, { exact: true })).toBeVisible();
+    const input = page.getByLabel("YOUR ANSWER");
+    if (mixedOutcomes && index === 1) {
+      await input.fill("999999");
+      await input.press("Enter");
+      await expect(page.getByText("NOT QUITE — TRY ONCE MORE")).toBeVisible();
+    }
+    if (mixedOutcomes && index === 2) {
+      await input.fill("999999");
+      await input.press("Enter");
+      await expect(page.getByText("NOT QUITE — TRY ONCE MORE")).toBeVisible();
+      await input.fill("999999");
+      await input.press("Enter");
+      await expect(page.getByText("LET’S REVIEW IT")).toBeVisible();
+      await page.getByRole("button", { name: "CONTINUE →", exact: true }).click();
+      continue;
+    }
+    await input.fill(answerFor(question));
+    await input.press("Enter");
+  }
+  await expect(page.locator(".results-stage")).toBeVisible();
 }
 
 async function openCollection(page, progress) {
@@ -179,6 +228,76 @@ test.describe("Challenge browser coverage", () => {
     await expect.poll(async () => (await checkpoint(page)).outcomes).toEqual(["reviewed"]);
     expect((await checkpoint(page)).questionIndex).toBe(1);
     await expect(page.getByText("QUESTION 2 OF 12")).toBeVisible();
+  });
+});
+
+test.describe("Complete daily journey", () => {
+  test("fresh progress completes the ritual, extra practice, and starts tomorrow", async ({ page }) => {
+    test.setTimeout(60_000);
+    await open(page, fixtures.collections.empty);
+    await page.getByRole("button", { name: "Begin today’s mathematics" }).click();
+    await completeWarmupAndEnterChallenge(page);
+    await completeChallenge(page, { mixedOutcomes: true });
+
+    const results = page.locator(".score-grid");
+    await expect(results).toContainText("10CORRECT");
+    await expect(results).toContainText("1SOLVED WITHANOTHER TRY");
+    await expect(results).toContainText("1REVIEWED");
+    await page.getByRole("button", { name: "RECEIVE TODAY’S OBJECT →", exact: true }).click();
+    await expect(page.locator(".reward-name")).toContainText("OLD BRASS SCHOOL BELL");
+    await page.getByRole("button", { name: "CONTINUE TO OBJECTS COLLECTION →", exact: true }).click();
+    await expect(page.locator("[data-collectible-id]")).toHaveCount(1);
+    await page.getByRole("button", { name: "Inspect OLD BRASS SCHOOL BELL" }).click();
+    await page.getByRole("button", { name: "PLACE IN THE STUDY →", exact: true }).click();
+    const placeBell = page.getByRole("button", { name: "Place OLD BRASS SCHOOL BELL in the Study" });
+    await expectReachable(page, placeBell, { minHeight: 44 });
+    await placeBell.click();
+    await expect(page.locator(".study-placement-details").getByText("IN THE STUDY", { exact: true })).toBeVisible();
+
+    const firstCompletion = await savedProgress(page);
+    const firstDaily = firstCompletion.sessions.find((session) => session.dateKey === fixtures.date && !session.extra);
+    expect(firstDaily).toMatchObject({ complete: true, rewardId: "bell" });
+    expect(firstDaily.checkpoint.outcomes).toHaveLength(12);
+    expect(firstCompletion.collectedIds).toEqual(["bell"]);
+    expect(firstCompletion.placedIds).toEqual(["bell"]);
+
+    await page.reload();
+    await page.getByRole("button", { name: "Enter Neverending Math" }).click();
+    await page.getByRole("button", { name: "Open objects collection" }).click();
+    await expect(page.locator('[data-collectible-id="bell"]')).toContainText("IN THE STUDY");
+    await page.getByRole("button", { name: "Inspect OLD BRASS SCHOOL BELL" }).click();
+    await page.getByRole("button", { name: "VIEW IN THE STUDY →", exact: true }).click();
+    await expect(page.locator(".study-placement-details")).toContainText("OLD BRASS SCHOOL BELL");
+    await expect(page.getByRole("button", { name: /place old brass school bell/i })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "GO HOME", exact: true }).click();
+    await page.getByRole("button", { name: "Enter Neverending Math" }).click();
+    await page.getByRole("button", { name: "PRACTICE A LITTLE MORE", exact: true }).click();
+    await completeWarmupAndEnterChallenge(page);
+    await completeChallenge(page);
+    await page.getByRole("button", { name: "RETURN TO THE STUDY →", exact: true }).click();
+
+    const afterExtra = await savedProgress(page);
+    const extra = afterExtra.sessions.at(-1);
+    expect(extra).toMatchObject({ complete: true, extra: true });
+    expect(extra.rewardId).toBeUndefined();
+    expect(afterExtra.collectedIds).toEqual(["bell"]);
+    expect(afterExtra.placedIds).toEqual(["bell"]);
+
+    const tomorrow = "2032-06-15";
+    await page.evaluate(({ storageKey, date }) => sessionStorage.setItem(`${storageKey}:playwright-date`, date), { storageKey: fixtures.storageKey, date: tomorrow });
+    await page.reload();
+    await page.getByRole("button", { name: "Enter Neverending Math" }).click();
+    await page.getByRole("button", { name: "Begin today’s mathematics" }).click();
+    await expect(page.getByText("EIGHT QUICK FACTS.")).toBeVisible();
+
+    const nextDay = await savedProgress(page);
+    const nextSession = nextDay.sessions.at(-1);
+    expect(nextSession.dateKey).toBe(tomorrow);
+    expect(nextSession.id).not.toBe(firstDaily.id);
+    expect(nextSession.questions.map((question) => question.prompt)).not.toEqual(firstDaily.questions.map((question) => question.prompt));
+    expect(nextSession).toMatchObject({ complete: false, extra: false });
+    expect(nextDay.collectedIds).toEqual(["bell"]);
   });
 });
 

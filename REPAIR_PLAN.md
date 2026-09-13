@@ -770,3 +770,44 @@ on branch `fix/study-accessibility`.
 
 Push the follow-up commit to `fix/study-accessibility`, then manually run **Browser tests** on that
 branch. Do not merge PR #10 until the run succeeds against the exact pushed commit.
+
+## Final daily-journey verification — 2026-09-13
+
+**GitHub main baseline:** `6e52a9420462d29d1f8326444743bd749c5983cf`, the merge commit for PR #10.
+The checked-out test tree is `e90413778899be456ae838181b0b9e0db6ff67a2`, matching the merged PR
+content. The prior browser evidence remains attributable only to PR head
+`3e8abb98b49cec76abcd0d77457185c6e6d41f28`: [Actions run 34726089994](https://github.com/jasonatkinson123-sketch/neverending-math/actions/runs/34726089994)
+passed all 81 scenarios before merge.
+
+### Missing coverage added
+
+The browser suite now contains one complete fresh-progress journey in each existing viewport project.
+It uses the real interface and persisted production data to:
+
+- type all eight Warm-Up answers;
+- complete the twelve-question Challenge with ten first-try outcomes, one retry, and one review;
+- move through Results and receive only the Old Brass School Bell;
+- place the Bell, reload, and verify the completed session, collection, and placement;
+- complete an entire extra-practice session and verify it grants no additional collectible; and
+- advance the isolated test calendar to the following day, reload without reseeding, and start a
+  distinct daily session while retaining the Bell.
+
+The test-only date shim now reads its date from isolated session storage on each navigation. This
+allows a test to cross a calendar boundary while keeping the localStorage changes made by the real
+application. It does not add a production route, learner control, or alternate state transition.
+
+### Current verification
+
+- `npm test`: **passes, 48 tests**.
+- `npm run diagnose:30-days`: **passes**, with 30 daily sessions and 30 distinct collectibles. The
+  existing LCM secure/not-due diagnostic remains unchanged.
+- Browser fixture preparation and Playwright discovery: **pass** under Node 22.22.2, listing
+  **84 scenarios** (28 per viewport).
+- This workspace has no Chromium/Chrome executable. The new daily journeys therefore have not yet
+  executed in a rendered browser. This is missing evidence rather than a confirmed product defect.
+
+### Release gate
+
+Run the existing manual **Browser tests** workflow on the dedicated daily-journey branch. A passing
+run must execute all 84 scenarios against the exact branch head. Any application assertion failure
+should be retained and reported; no production behavior is changed in this verification stage.
