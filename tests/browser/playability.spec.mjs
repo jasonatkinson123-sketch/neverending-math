@@ -68,8 +68,13 @@ async function completeWarmupAndEnterChallenge(page) {
   for (const [index, question] of session.warmups.entries()) {
     await expect(page.getByText(`${index + 1} OF ${session.warmups.length}`, { exact: true })).toBeVisible();
     const input = page.getByLabel("Warm-up answer");
+    await expect(input).toBeEnabled();
     await input.fill(answerFor(question));
     await input.press("Enter");
+    if (index < session.warmups.length - 1) {
+      await expect(page.getByText(`${index + 2} OF ${session.warmups.length}`, { exact: true })).toBeVisible();
+      await expect(page.getByLabel("Warm-up answer")).toBeEnabled();
+    }
   }
   await expect(page.getByRole("heading", { name: "WARM-UP COMPLETE" })).toBeVisible();
   await page.getByRole("button", { name: "CONTINUE →", exact: true }).click();
@@ -82,23 +87,34 @@ async function completeChallenge(page, { mixedOutcomes = false } = {}) {
   for (const [index, question] of session.questions.entries()) {
     await expect(page.getByText(`QUESTION ${index + 1} OF ${session.questions.length}`, { exact: true })).toBeVisible();
     const input = page.getByLabel("YOUR ANSWER");
+    await expect(input).toBeEnabled();
     if (mixedOutcomes && index === 1) {
       await input.fill("999999");
       await input.press("Enter");
       await expect(page.getByText("NOT QUITE — TRY ONCE MORE")).toBeVisible();
+      await expect(input).toBeEnabled();
     }
     if (mixedOutcomes && index === 2) {
       await input.fill("999999");
       await input.press("Enter");
       await expect(page.getByText("NOT QUITE — TRY ONCE MORE")).toBeVisible();
+      await expect(input).toBeEnabled();
       await input.fill("999999");
       await input.press("Enter");
       await expect(page.getByText("LET’S REVIEW IT")).toBeVisible();
       await page.getByRole("button", { name: "CONTINUE →", exact: true }).click();
+      await expect(page.getByText(`QUESTION ${index + 2} OF ${session.questions.length}`, { exact: true })).toBeVisible();
+      await expect(page.getByLabel("YOUR ANSWER")).toBeEnabled();
       continue;
     }
     await input.fill(answerFor(question));
     await input.press("Enter");
+    if (index === session.questions.length - 1) {
+      await expect(page.locator(".results-stage")).toBeVisible();
+    } else {
+      await expect(page.getByText(`QUESTION ${index + 2} OF ${session.questions.length}`, { exact: true })).toBeVisible();
+      await expect(page.getByLabel("YOUR ANSWER")).toBeEnabled();
+    }
   }
   await expect(page.locator(".results-stage")).toBeVisible();
 }
